@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Private Finanzverwaltung</title>
+<link rel="stylesheet" href="assets/style.css?v=16">
+</head>
+<body>
+
+<nav class="seitenleiste">
+  <div class="marke">Kontobuch<small>Private Finanzverwaltung</small></div>
+  <ul class="nav-liste" id="nav-liste-haupt">
+    <li><button class="nav-eintrag aktiv" data-ziel="start"><svg class="nav-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg> Start</button></li>
+    <!-- Restliche Einträge werden aus der administrierbaren Reihenfolge (Administration → Menü-Reihenfolge) dynamisch gerendert, siehe renderNavigation() in app.js -->
+  </ul>
+  <ul class="nav-liste nav-liste-admin">
+    <li><button class="nav-eintrag" data-ziel="hilfe"><svg class="nav-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Hilfe</button></li>
+    <li><button class="nav-eintrag" data-ziel="admin"><svg class="nav-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Administration</button></li>
+  </ul>
+  <div class="seitenleiste-fuss" id="fuss-status">wird geladen …</div>
+  <div class="seitenleiste-fuss" id="fuss-version" style="opacity:.55; padding-top:0"></div>
+</nav>
+
+<main class="hauptbereich">
+
+  <section id="abschnitt-start" class="abschnitt aktiv">
+    <div class="kopfzeile"><h1 data-hilfe="start">Übersicht</h1><span class="stempel" id="start-stempel">–</span></div>
+    <div id="vorzeichen-banner"></div>
+    <div id="sparziel-banner"></div>
+    <div class="karte karte-gesamtsaldo" id="start-gesamtsaldo"></div>
+    <div class="karten-raster" id="start-konten-karten"></div>
+    <div class="block">
+      <div class="block-kopf"><h2 data-hilfe="start.uebersicht">Letzte Buchungen</h2></div>
+      <div id="start-letzte-buchungen"></div>
+    </div>
+  </section>
+
+  <section id="abschnitt-konten" class="abschnitt">
+    <div class="kopfzeile"><h1 data-hilfe="konten">Konten</h1></div>
+    <div class="block">
+      <h2 data-hilfe="konten.anlegen"><span id="konto-form-titel">Neues Konto</span></h2>
+      <form class="formular" id="form-konto">
+        <div><label>Name</label><input name="name" required></div>
+        <div><label>Typ</label>
+          <select name="typ">
+            <option>Girokonto</option><option>Sparkonto</option>
+            <option>Kreditkarte</option><option>Bargeld</option>
+          </select>
+        </div>
+        <div><label>Eröffnungsdatum</label><input type="date" name="eroeffnungsdatum" required></div>
+        <div><label>Person (optional)</label><select name="person_id" class="person-auswahl"><option value="">– keine –</option></select></div>
+        <div><label><input type="checkbox" name="in_gesamtsaldo" style="width:auto" checked> Im Gesamtsaldo</label></div>
+        <div><label><input type="checkbox" name="farbe_aktiv" id="konto-farbe-aktiv" style="width:auto"> Eigene Farbe</label></div>
+        <div id="konto-farbe-feld" style="display:none"><label>Farbe</label><input type="color" name="farbe" value="#2f7d4f"></div>
+        <div class="reihen-werkzeuge">
+          <button class="knopf" type="submit" id="konto-submit">Anlegen</button>
+          <button class="knopf gefahr" type="button" id="konto-verwerfen" style="display:none">Änderung verwerfen</button>
+        </div>
+      </form>
+    </div>
+    <div class="block">
+      <div class="block-kopf">
+        <h2 data-hilfe="konten.liste">Alle Konten</h2>
+        <div class="reihen-werkzeuge">
+          <select id="konten-filter-person" class="person-auswahl"><option value="">Alle Personen</option></select>
+        </div>
+      </div>
+      <table><thead><tr><th></th><th>Name</th><th>Typ</th><th>Person</th><th>Eröffnet</th><th>Gesamtsaldo</th><th class="rechts">Saldo</th><th></th></tr></thead>
+      <tbody id="konten-tabelle"></tbody></table>
+    </div>
+    <div class="block">
+      <h2 data-hilfe="konten.saldo-korrektur">Saldo-Korrektur</h2>
+      <p class="hinweis" data-hinweis="konten.saldo-korrektur"></p>
+      <form class="formular" id="form-saldo-korrektur">
+        <div><label>Konto</label><select name="konto_id" class="konto-auswahl" required></select></div>
+        <div><label>Datum</label><input type="date" name="datum" required></div>
+        <div><label>Saldo (€)</label><input type="number" step="0.01" name="saldo" required></div>
+        <div><label>Kommentar</label><input name="kommentar"></div>
+        <div><button class="knopf" type="submit">Korrektur anlegen</button></div>
+      </form>
+    </div>
+  </section>
+
+  <section id="abschnitt-buchungen" class="abschnitt">
+    <div class="kopfzeile"><h1 data-hilfe="buchungen">Buchungen</h1></div>
+    <div class="block">
+      <h2 data-hilfe="buchungen.erfassen">Neue Buchung</h2>
+      <form class="formular" id="form-buchung">
+        <div><label>Konto</label><select name="konto_id" class="konto-auswahl" required></select></div>
+        <div><label>Typ</label>
+          <select name="typ" id="buchung-typ">
+            <option value="Ist" selected>Ist</option><option value="Plan">Plan</option><option value="Uebertragung">Übertragung</option>
+          </select>
+        </div>
+        <div id="ziel-konto-feld" style="display:none"><label>Zielkonto</label><select name="zielkonto_id" class="konto-auswahl"></select></div>
+        <div><label>Datum</label><input type="date" name="datum" required></div>
+        <div><label id="betrag-label">Betrag (€)</label><input type="number" step="0.01" name="betrag" required></div>
+        <div id="kategorie-feld"><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" required></select></div>
+        <div id="sparziel-feld" style="display:none"><label>Sparziel zuordnen (optional)</label><select name="sparziel_id"><option value="">– keines –</option></select></div>
+        <div><label>Beschreibung</label><input name="beschreibung"></div>
+        <div class="reihen-werkzeuge">
+          <button class="knopf" type="submit" id="buchung-submit">Buchen</button>
+          <button class="knopf gefahr" type="button" id="buchung-verwerfen" style="display:none">Änderung verwerfen</button>
+        </div>
+      </form>
+      <p class="hinweis" id="buchung-hinweis"></p>
+    </div>
+    <div class="block">
+      <div class="block-kopf">
+        <h2 data-hilfe="buchungen.liste">Buchungsliste &amp; Suche</h2>
+        <button class="knopf sekundaer klein" id="suche-umschalten">Suche einblenden</button>
+      </div>
+      <div id="suche-bereich" style="display:none; border-bottom:1px solid var(--linie); padding-bottom:14px; margin-bottom:14px">
+        <div class="formular">
+          <div><label>Beschreibung / Kategorie</label><input id="s-text" placeholder="Freitext"></div>
+          <div><label>Betrag von</label><input type="number" step="0.01" id="s-betrag-von"></div>
+          <div><label>Betrag bis</label><input type="number" step="0.01" id="s-betrag-bis"></div>
+          <div><label>Datum von</label><input type="date" id="s-von"></div>
+          <div><label>Datum bis</label><input type="date" id="s-bis"></div>
+          <div><label>Konto</label><select id="s-konto" class="konto-auswahl"><option value="">Alle Konten</option></select></div>
+          <div><label>Kategorie</label><select id="s-kategorie" class="kategorie-auswahl"><option value="">Alle Kategorien</option></select></div>
+          <div><label>Person</label><select id="s-person" class="person-auswahl"><option value="">Alle Personen</option></select></div>
+          <div><label>Typ</label><select id="s-typ"><option value="">Alle</option><option value="Ist">Ist</option><option value="Plan">Plan</option><option value="Uebertragung">Übertragung</option></select></div>
+          <div><label><input type="checkbox" id="s-unter" checked style="width:auto"> inkl. Unterkategorien</label></div>
+          <div class="reihen-werkzeuge"><button class="knopf" id="s-suchen">Suchen</button><button class="knopf sekundaer" id="s-zuruecksetzen">Zurücksetzen</button></div>
+        </div>
+        <p class="hinweis" id="s-ergebnis"></p>
+      </div>
+      <div class="formular" style="margin-bottom:12px">
+        <div><label>Konto</label><select id="buchungen-filter-konto" class="konto-auswahl"><option value="">Alle Konten</option></select></div>
+        <div><label>Person</label><select id="buchungen-filter-person" class="person-auswahl"><option value="">Alle Personen</option></select></div>
+        <div><label>Anzeigen</label>
+          <select id="buchungen-filter-herkunft">
+            <option value="">Alles</option>
+            <option value="ist-manuell" selected>Nur Ist-Buchungen (manuell)</option>
+            <option value="plan-manuell">Nur Plan-Buchungen (manuell)</option>
+            <option value="wiederkehrend">Nur automatisch (Wiederkehrend / Darlehen / Altersvorsorge)</option>
+            <option value="anstehend">Inkl. anstehender Termine</option>
+          </select>
+        </div>
+        <div><label data-hilfe="auswertungen.inflation" data-hinweis-titel="inflation.schalter"><input type="checkbox" id="buchungen-inflation" style="width:auto"> Inflation einrechnen (nur anstehende Termine)</label></div>
+      </div>
+      <table><thead><tr><th>Datum</th><th>Konto</th><th>Kategorie</th><th>Typ</th><th>Herkunft</th><th>Beschreibung</th><th class="rechts">Betrag</th><th></th></tr></thead>
+      <tbody id="buchungen-tabelle"></tbody></table>
+    </div>
+  </section>
+
+  <section id="abschnitt-wiederkehrend" class="abschnitt">
+    <div class="kopfzeile"><h1 data-hilfe="wiederkehrend">Wiederkehrende Buchungen</h1></div>
+    <div class="block">
+      <h2 data-hilfe="wiederkehrend.anlegen">Neue Vorlage</h2>
+      <form class="formular" id="form-wiederkehrend">
+        <div><label>Art</label>
+          <select name="art" id="wk-art">
+            <option value="buchung" selected>Buchung</option><option value="umbuchung">Umbuchung</option>
+          </select>
+        </div>
+        <div><label>Konto</label><select name="konto_id" class="konto-auswahl" required></select></div>
+        <div id="wk-zielkonto-feld" style="display:none"><label>Zielkonto</label><select name="zielkonto_id" class="konto-auswahl"></select></div>
+        <div><label>Person (optional)</label><select name="person_id" class="person-auswahl"><option value="">– keine –</option></select></div>
+        <div><label id="wk-betrag-label">Betrag (€)</label><input type="number" step="0.01" name="betrag" required></div>
+        <div id="wk-kategorie-feld"><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" data-ohne-umbuchung required></select></div>
+        <div id="wk-sparziel-feld" style="display:none"><label>Sparziel zuordnen (optional)</label><select name="sparziel_id"><option value="">– keines –</option></select></div>
+        <div><label>Beschreibung</label><input name="beschreibung"></div>
+        <div><label>Intervall</label>
+          <select name="intervall">
+            <option value="monatlich">Monatlich</option><option value="quartalsweise">Quartalsweise</option>
+            <option value="halbjaehrlich">Halbjährlich</option><option value="jaehrlich">Jährlich</option>
+          </select>
+        </div>
+        <div><label>Tag des Monats</label><input type="number" name="tag_des_monats" min="1" max="31" value="1" required></div>
+        <div><label>Monat (bei nicht-monatlich)</label><input type="number" name="monat" min="1" max="12"></div>
+        <div><label>Startdatum</label><input type="date" name="startdatum" required></div>
+        <div><label>Enddatum (optional)</label><input type="date" name="enddatum"></div>
+        <div id="wk-inflation-feld"><label><input type="checkbox" name="inflationsflag" id="wk-inflation" style="width:auto"> Inflations-abhängig</label></div>
+        <input type="hidden" name="dynamik_aktiv" id="wk-dynamik-hidden" value="0">
+        <input type="hidden" name="dynamik_rhythmus_jahre" id="wk-dynamik-rhythmus-hidden" value="">
+        <input type="hidden" name="dynamik_prozent" id="wk-dynamik-prozent-hidden" value="">
+        <input type="hidden" name="dynamik_startjahr" id="wk-dynamik-startjahr-hidden" value="">
+        <div class="reihen-werkzeuge">
+          <button class="knopf" type="submit" id="wk-submit">Anlegen</button>
+          <button class="knopf gefahr" type="button" id="wk-verwerfen" style="display:none">Änderung verwerfen</button>
+        </div>
+      </form>
+      <p class="hinweis" id="wk-meldung"></p>
+      <p class="hinweis" id="wk-dynamik-hinweis" style="display:none" data-hinweis="wiederkehrend.dynamik-alt"></p>
+    </div>
+    <div class="block wk-vorlagen-block">
+      <div class="block-kopf">
+        <h2 data-hilfe="wiederkehrend.verwalten">Vorlagen</h2>
+        <div class="reihen-werkzeuge">
+          <input id="wk-filter-text" placeholder="Filter (Beschreibung/Kategorie)" style="width:230px">
+          <select id="wk-filter-intervall"><option value="">Alle Intervalle</option>
+            <option value="monatlich">Monatlich</option><option value="quartalsweise">Quartalsweise</option>
+            <option value="halbjaehrlich">Halbjährlich</option><option value="jaehrlich">Jährlich</option></select>
+          <select id="wk-filter-status"><option value="">Alle</option><option value="1">Nur aktive</option><option value="0">Nur deaktivierte</option></select>
+          <select id="wk-filter-konto" class="konto-auswahl"><option value="">Alle Konten</option></select>
+          <select id="wk-filter-person" class="person-auswahl"><option value="">Alle Personen</option></select>
+        </div>
+      </div>
+      <p class="hinweis" data-hinweis="tabelle.sortieren"></p>
+      <div class="wk-tabelle-rahmen"><table><thead><tr>
+        <th class="sortierbar" data-spalte="beschreibung">Beschreibung</th>
+        <th>Person</th>
+        <th class="sortierbar" data-spalte="kategorie_anzeige">Kategorie</th>
+        <th class="sortierbar rechts" data-spalte="betrag">Betrag</th>
+        <th class="sortierbar" data-spalte="intervall">Intervall</th>
+        <th class="sortierbar" data-spalte="tag_des_monats">Tag</th>
+        <th>Monat</th>
+        <th class="sortierbar" data-spalte="startdatum">Start</th>
+        <th>Infl.</th>
+        <th class="sortierbar" data-spalte="aktiv">Status</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="wiederkehrend-tabelle"></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="abschnitt-plan" class="abschnitt">
+    <div class="kopfzeile"><h1 data-hilfe="plan.protokoll">Plan-Buchungen · Protokoll</h1></div>
+    <p class="hinweis" data-hinweis="plan.protokoll"></p>
+    <div class="block">
+      <table><thead><tr><th>Datum Umwandlung</th><th>Buchungsdatum</th><th>Beschreibung</th><th class="rechts">Betrag</th><th>Status</th><th></th></tr></thead>
+      <tbody id="plan-protokoll-tabelle"></tbody></table>
+    </div>
+  </section>
+
+  <section id="abschnitt-budgets" class="abschnitt">
+    <div class="kopfzeile"><h1 data-hilfe="budgets">Budgets</h1><span><label class="inflations-schalter" data-hinweis-titel="inflation.schalter" data-hilfe="auswertungen.inflation"><input type="checkbox" id="budgets-inflation-schalter" style="width:auto"> Inflation einrechnen</label> <span class="stempel" id="budget-stempel">–</span></span></div>
+
+    <div class="budget-tabs">
+      <button type="button" class="budget-tab-knopf aktiv" data-budget-tab="neu">Neues Budget</button>
+      <button type="button" class="budget-tab-knopf" data-budget-tab="uebersicht">Übersicht</button>
+      <button type="button" class="budget-tab-knopf" data-budget-tab="details">Details</button>
+    </div>
+
+    <div class="budget-tab-inhalt aktiv" data-budget-tab-inhalt="neu">
+      <div class="block">
+        <div class="block-kopf"><h2 data-hilfe="budgets.anlegen"><span id="budget-form-titel">Neues Budget</span></h2></div>
+        <form class="formular" id="form-budget">
+          <div><label>Name</label><input name="name" required></div>
+          <div><label>Typ</label>
+            <select name="typ" id="budget-typ">
+              <option value="ausgabe" selected>Ausgabe</option>
+              <option value="einnahme">Einnahme</option>
+              <option value="sparziel">Sparziel</option>
+            </select>
+          </div>
+          <div class="budget-kategorie-feld"><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl"></select></div>
+          <div class="budget-kategorie-feld"><label><input type="checkbox" name="inkl_unterkategorien" checked style="width:auto"> inkl. Unterkategorien</label></div>
+          <div class="budget-sparziel-feld" style="display:none"><label>Trägerkonto</label><select name="konto_id" class="konto-auswahl"></select></div>
+          <div class="budget-sparziel-feld" style="display:none"><label>Zielbetrag (€)</label><input type="number" step="0.01" name="zielbetrag"></div>
+          <div class="budget-sparziel-feld" style="display:none"><label>Zieldatum (optional)</label><input type="date" name="zieldatum"></div>
+          <div><label>Betrag je Periode (€)</label><input type="number" step="0.01" name="betrag" required></div>
+          <div><label>Zeitraum</label>
+            <select name="zeitraum" id="budget-zeitraum">
+              <option value="monatlich" selected>Monatlich</option>
+              <option value="quartalsweise">Quartalsweise</option>
+              <option value="jaehrlich">Jährlich</option>
+              <option value="benutzerdefiniert">Benutzerdefiniert</option>
+            </select>
+          </div>
+          <div class="budget-intervall-feld" style="display:none"><label>Alle …</label><input type="number" name="intervall_wert" min="1"></div>
+          <div class="budget-intervall-feld" style="display:none"><label>Einheit</label>
+            <select name="intervall_einheit"><option value="tage">Tage</option><option value="wochen">Wochen</option><option value="monate">Monate</option></select>
+          </div>
+          <div><label>Startdatum</label><input type="date" name="startdatum" required></div>
+          <div><label>Enddatum (optional)</label><input type="date" name="enddatum"></div>
+          <div><label><input type="checkbox" name="uebertrag" id="budget-uebertrag" style="width:auto"> Nicht verbrauchtes Budget in die nächste Periode mitnehmen</label></div>
+          <div class="budget-uebertrag-feld" style="display:none"><label>Wie soll weitergerechnet werden?</label>
+            <select name="uebertrag_modus">
+              <option value="letzte">Nur in die nächste Periode</option>
+              <option value="kumuliert">Fortlaufend ansparen</option>
+            </select>
+          </div>
+          <div class="budget-uebertrag-feld" style="display:none">
+            <label>Deckel für den Übertrag (€, optional)</label>
+            <input type="number" step="0.01" name="uebertrag_deckel" placeholder="unbegrenzt">
+          </div>
+          <div class="budget-kategorie-feld">
+            <label><input type="checkbox" name="inflationsflag" id="budget-inflation" style="width:auto"> Inflationsfaktor</label>
+          </div>
+          <div><label>Warnschwellen (%, komma-separiert)</label><input name="warnschwellen" placeholder="80, 100" value="80"></div>
+          <div><label>Person (optional)</label><select name="person_id" class="person-auswahl"><option value="">– keine –</option></select></div>
+          <div class="reihen-werkzeuge">
+            <button class="knopf" type="submit" id="budget-submit">Anlegen</button>
+            <button class="knopf gefahr" type="button" id="budget-verwerfen" style="display:none">Änderung verwerfen</button>
+          </div>
+        </form>
+        <p class="warnung" id="budget-meldung" style="background:none;border:none;padding:0"></p>
+        <p class="hinweis" id="budget-uebertrag-hinweis" style="display:none"></p>
+      </div>
+    </div>
+
+    <div class="budget-tab-inhalt" data-budget-tab-inhalt="uebersicht">
+      <div class="block">
+        <h2 data-hilfe="budgets.uebersicht">Budget-Übersicht</h2>
+        <p class="hinweis" data-hinweis="budgets.uebersicht"></p>
+        <div class="diagramm-flaeche" id="budget-uebersicht-flaeche"><canvas id="budget-uebersicht-chart"></canvas></div>
+      </div>
+      <div class="block">
+        <div class="block-kopf">
+          <h2 data-hilfe="budgets.uebersicht">Alle Budgets</h2>
+          <div class="reihen-werkzeuge">
+            <select id="budget-filter-person" class="person-auswahl"><option value="">Alle Personen</option></select>
+          </div>
+        </div>
+        <div id="budget-liste"></div>
+      </div>
+    </div>
+
+    <div class="budget-tab-inhalt" data-budget-tab-inhalt="details">
+      <div class="block">
+        <div class="block-kopf"><h2 data-hilfe="budgets.details">Verlauf</h2></div>
+        <div class="formular" style="margin-bottom:6px">
+          <div><label>Budget</label><select id="budget-detail-auswahl"><option value="">Alle</option></select></div>
+          <div><label>Zeitraum</label>
+            <select id="budget-detail-horizont">
+              <option value="standard" selected>Standard (25 Monate)</option>
+              <option value="benutzerdefiniert">Benutzerdefiniert</option>
+            </select>
+          </div>
+          <div id="budget-detail-von-feld" style="display:none"><label>Von</label><input type="month" id="budget-detail-von"></div>
+          <div id="budget-detail-bis-feld" style="display:none"><label>Bis</label><input type="month" id="budget-detail-bis"></div>
+        </div>
+        <p class="hinweis" data-hinweis="budgets.details"></p>
+        <div class="diagramm-flaeche"><canvas id="budget-chart"></canvas></div>
+        <h3 style="font-family:var(--schrift-anzeige); font-weight:400" id="budget-detail-buchungen-titel">Zugehörige Plan-/Buchungen</h3>
+        <table id="budget-detail-buchungen-tabelle"><thead><tr><th>Datum</th><th>Kategorie</th><th>Status</th><th>Beschreibung</th><th class="rechts">Betrag</th></tr></thead>
+        <tbody id="budget-detail-buchungen"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <section id="abschnitt-darlehen" class="abschnitt">
+    <div class="kopfzeile"><h1 data-hilfe="darlehen">Darlehen</h1></div>
+    <div class="block">
+      <h2 data-hilfe="darlehen.anlegen"><span id="darlehen-form-titel">Neues Darlehen</span></h2>
+      <form class="formular" id="form-darlehen">
+        <div><label>Bezeichnung</label><input name="bezeichnung" required></div>
+        <div><label>Darlehenssumme (€)</label><input type="number" step="0.01" min="0" name="darlehenssumme" id="darlehen-summe" required></div>
+        <div><label>Zinssatz (% p.a.)</label><input type="number" step="0.01" name="zinssatz" required></div>
+        <div><label>Zinsbeginn</label><input type="date" name="zinsbeginn" required></div>
+        <div><label>Tilgungsbeginn</label><input type="date" name="tilgungsbeginn" required></div>
+        <div><label>Laufzeit (Jahre)</label><input type="number" name="laufzeit_jahre" required></div>
+        <div><label>Ende Zinsbindung</label><input type="date" name="ende_zinsbindung" required></div>
+        <div><label>Anschlusszinssatz (%)</label><input type="number" step="0.01" name="anschlusszinssatz" required></div>
+        <div><label>Ratenmodus</label>
+          <select name="raten_modus" id="darlehen-raten-modus">
+            <option value="tilgungssatz">Tilgungssatz (%)</option>
+            <option value="feste_rate" selected>Feste Rate (€)</option>
+          </select>
+        </div>
+        <div id="feld-tilgungssatz" style="display:none"><label>Tilgungssatz (% p.a.)</label><input type="number" step="0.01" name="tilgungssatz"></div>
+        <div id="feld-feste-rate"><label>Feste Rate (€/Monat)</label><input type="number" step="0.01" name="feste_rate"></div>
+        <div><label>Zahlungskonto</label><select name="zahlungskonto_id" class="konto-auswahl"></select></div>
+        <div><label>Person (optional)</label><select name="person_id" class="person-auswahl"><option value="">– keine –</option></select></div>
+        <div class="reihen-werkzeuge">
+          <button class="knopf" type="submit" id="darlehen-submit">Anlegen</button>
+          <button class="knopf gefahr" type="button" id="darlehen-verwerfen" style="display:none">Änderung verwerfen</button>
+        </div>
+      </form>
+    </div>
+    <div class="block">
+      <div class="block-kopf">
+        <h2 data-hilfe="darlehen">Alle Darlehen</h2>
+        <div class="reihen-werkzeuge">
+          <select id="darlehen-filter-person" class="person-auswahl"><option value="">Alle Personen</option></select>
+        </div>
+      </div>
+      <div id="darlehen-liste"></div>
+    </div>
+    <div class="block" id="darlehen-detail-block" style="display:none">
+      <div class="block-kopf"><h2 data-hilfe="darlehen.tilgungsplan"><span id="darlehen-detail-titel">Tilgungsplan</span></h2></div>
+      <div class="diagramm-flaeche"><canvas id="darlehen-chart"></canvas></div>
+      <h3 style="font-family:var(--schrift-anzeige); font-weight:400; margin-top:18px">Zahlungen dieses Darlehens</h3>
+      <table><thead><tr><th>Datum</th><th>Kategorie</th><th>Status</th><th>Beschreibung</th><th class="rechts">Betrag</th></tr></thead>
+      <tbody id="tilgungsplan-tabelle"></tbody></table>
+    </div>
+  </section>
+
+  <section id="abschnitt-altersvorsorge" class="abschnitt">
+    <div class="kopfzeile"><h1 data-hilfe="altersvorsorge">Altersvorsorge</h1></div>
+    <div class="block">
+      <div class="block-kopf"><h2 data-hilfe="altersvorsorge.anlegen"><span id="av-form-titel">Neue Altersvorsorge</span></h2></div>
+      <form id="form-altersvorsorge">
+        <div class="formular">
+          <div><label>Bezeichnung</label><input name="bezeichnung" required></div>
+          <div><label>Anbieter/Vertragsnummer (optional)</label><input name="anbieter"></div>
+          <div><label>Zahlungskonto</label><select name="zahlungskonto_id" class="konto-auswahl" required></select></div>
+          <div><label>Person (optional)</label><select name="person_id" class="person-auswahl"><option value="">– keine –</option></select></div>
+          <div><label>Stand der Information</label><input type="date" name="stand_datum" required></div>
+          <div class="schalter-zelle"><label><input type="checkbox" name="hat_einzahlung" id="av-hat-einzahlung"> Es gibt eigene Einzahlungen</label></div>
+        </div>
+
+        <div class="formular-block" id="av-einzahlung-block">
+          <div class="formular-block-titel">
+            <span>Einzahlung</span>
+          </div>
+          <div class="formular" id="av-einzahlung-felder">
+            <div><label>Beitrag (€)</label><input type="number" step="0.01" name="beitrag_betrag"></div>
+            <div><label>Beitrags-Kategorie</label><select name="beitrag_kategorie_id" class="kategorie-auswahl"></select></div>
+            <div><label>Intervall</label>
+              <select name="beitrag_intervall">
+                <option value="monatlich">Monatlich</option><option value="quartalsweise">Quartalsweise</option>
+                <option value="halbjaehrlich">Halbjährlich</option><option value="jaehrlich">Jährlich</option>
+              </select>
+            </div>
+            <div><label>Tag des Monats</label><input type="number" name="beitrag_tag_des_monats" min="1" max="31" value="1"></div>
+            <div><label>Monat (bei nicht-monatlich)</label><input type="number" name="beitrag_monat" min="1" max="12"></div>
+            <div><label>Beitragsstart</label><input type="date" name="beitrag_startdatum"></div>
+            <div><label><input type="checkbox" name="beitrag_dynamik_aktiv" id="av-dynamik" style="width:auto"> Beitragsdynamik</label></div>
+            <div class="av-dynamik-feld" style="display:none"><label>Rhythmus (Jahre)</label><input type="number" name="beitrag_dynamik_rhythmus_jahre" min="1"></div>
+            <div class="av-dynamik-feld" style="display:none"><label>Steigerung (% je Zyklus)</label><input type="number" step="0.01" name="beitrag_dynamik_prozent"></div>
+            <div class="av-dynamik-feld" style="display:none"><label>Startjahr (optional)</label><input type="number" name="beitrag_dynamik_startjahr" min="2000" max="2100"></div>
+          </div>
+        </div>
+
+        <div class="formular-block">
+          <div class="formular-block-titel"><span>Auszahlung</span></div>
+          <div class="formular">
+            <div><label>Rentenbeginn</label><input type="date" name="rentenbeginn" required></div>
+            <div><label>Ende-Datum (z. B. nach Tod, optional)</label><input type="date" name="ende_datum"></div>
+            <div><label>Auszahlungsart</label>
+              <select name="auszahlungsart" id="av-auszahlungsart">
+                <option value="rente">Rente</option><option value="einmalzahlung">Einmalzahlung</option>
+              </select>
+            </div>
+            <div><label>Auszahlungs-Kategorie</label><select name="auszahlung_kategorie_id" class="kategorie-auswahl" required></select></div>
+
+            <div class="av-rente-feld"><label>Rente garantiert (€/Monat)</label><input type="number" step="0.01" name="rente_garantiert_betrag"></div>
+            <div class="av-rente-feld"><label>Rente voraussichtlich (€/Monat)</label><input type="number" step="0.01" name="rente_voraussichtlich_betrag"></div>
+            <div class="av-einmal-feld" style="display:none"><label>Einmalzahlung garantiert (€)</label><input type="number" step="0.01" name="einmalzahlung_garantiert_betrag"></div>
+            <div class="av-einmal-feld" style="display:none"><label>Einmalzahlung voraussichtlich (€)</label><input type="number" step="0.01" name="einmalzahlung_voraussichtlich_betrag"></div>
+            <div>
+              <label><input type="checkbox" name="auszahlung_inflationsflag" id="av-inflation" style="width:auto"> Inflationsfaktor</label>
+            </div>
+
+            <div><label>Rückkaufswert (€, nur informativ)</label><input type="number" step="0.01" name="rueckkaufswert"></div>
+            <div><label>Auszahlung bei Tod (€, nur informativ)</label><input type="number" step="0.01" name="auszahlung_bei_tod"></div>
+          </div>
+        </div>
+
+        <div class="reihen-werkzeuge">
+          <button class="knopf" type="submit" id="av-submit">Anlegen</button>
+          <button class="knopf gefahr" type="button" id="av-verwerfen" style="display:none">Änderung verwerfen</button>
+        </div>
+      </form>
+      <p class="hinweis" data-hinweis="altersvorsorge.betraege"></p>
+    </div>
+
+    <div class="block">
+      <div class="block-kopf">
+        <h2 data-hilfe="altersvorsorge.liste">Alle Altersvorsorgen</h2>
+        <div class="reihen-werkzeuge">
+          <input id="av-filter-text" placeholder="Filter (Bezeichnung/Anbieter)" style="width:220px">
+          <select id="av-filter-person" class="person-auswahl"><option value="">Alle Personen</option></select>
+          <select id="av-filter-status"><option value="">Alle</option><option value="1">Nur aktive</option><option value="0">Nur deaktivierte</option></select>
+        </div>
+      </div>
+      <p class="hinweis" data-hinweis="tabelle.sortieren"></p>
+      <table><thead><tr>
+        <th class="sortierbar" data-spalte="bezeichnung">Bezeichnung</th>
+        <th class="sortierbar" data-spalte="anbieter">Anbieter</th>
+        <th>Person</th>
+        <th class="sortierbar" data-spalte="rentenbeginn">Rentenbeginn</th>
+        <th class="sortierbar" data-spalte="auszahlungsart">Auszahlungsart</th>
+        <th class="sortierbar rechts" data-spalte="_garantiert">Garantiert</th>
+        <th class="sortierbar rechts" data-spalte="_voraussichtlich">Voraussichtlich</th>
+        <th>Infl.</th>
+        <th class="sortierbar" data-spalte="aktiv">Status</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="altersvorsorge-tabelle"></tbody></table>
+    </div>
+  </section>
+
+  <section id="abschnitt-auswertungen" class="abschnitt">
+    <div class="kopfzeile"><h1 data-hilfe="auswertungen">Auswertungen</h1><label class="inflations-schalter" data-hinweis-titel="inflation.schalter" data-hilfe="auswertungen.inflation"><input type="checkbox" id="auswertung-inflation" style="width:auto"> Inflation einrechnen</label></div>
+
+    <div class="auswertung-tabs">
+      <button type="button" class="auswertung-tab-knopf aktiv" data-auswertung-tab="allgemein">Allgemein</button>
+      <button type="button" class="auswertung-tab-knopf" data-auswertung-tab="darlehen">Darlehen</button>
+      <button type="button" class="auswertung-tab-knopf" data-auswertung-tab="altersvorsorge">Altersvorsorge</button>
+    </div>
+
+    <div class="auswertung-tab-inhalt aktiv" data-auswertung-tab-inhalt="allgemein">
+    <div class="block filter-block">
+      <div class="filterleiste">
+        <div><label data-hilfe="auswertungen.filter">Zeithorizont</label>
+          <div class="segment" data-segment-fuer="auswertung-horizont"></div>
+          <select id="auswertung-horizont" hidden>
+            <option value="1">1 J</option><option value="5" selected>5 J</option>
+            <option value="10">10 J</option><option value="20">20 J</option>
+            <option value="30">30 J</option>
+            <option value="benutzerdefiniert">Frei</option>
+          </select>
+        </div>
+        <div id="auswertung-von-feld" style="display:none"><label>Von</label><input type="date" id="auswertung-von"></div>
+        <div id="auswertung-bis-feld" style="display:none"><label>Bis</label><input type="date" id="auswertung-bis"></div>
+        <div><label data-hilfe="auswertungen.auswahl">Konten</label><div class="mehrfach" id="auswertung-konten" data-art="konten"></div></div>
+        <div><label>Kategorien</label><div class="mehrfach" id="auswertung-kategorien" data-art="kategorien"></div></div>
+        <div><label>Einheit</label>
+          <div class="segment" data-segment-fuer="auswertung-einheit"></div>
+          <select id="auswertung-einheit" hidden>
+            <option value="1">€</option><option value="1000" selected>k€</option>
+          </select>
+        </div>
+        <div class="filter-haken">
+          <label><input type="checkbox" id="auswertung-inkl-darlehen" checked style="width:auto"> inkl. Darlehen</label>
+          <label><input type="checkbox" id="auswertung-korridor" style="width:auto"> Altersvorsorge-Korridor</label>
+        </div>
+      </div>
+      <p class="hinweis" id="auswertung-kategorie-hinweis" style="display:none" data-hinweis="auswertungen.kategorie-filter"></p>
+    </div>
+    <p class="leer-hinweis" id="auswertung-leer" style="display:none"></p>
+    <div id="auswertung-inhalt">
+    <div class="kennzahl-kacheln" id="auswertung-kacheln"></div>
+    <div class="block">
+      <div class="diagramm-kopf"><div><h2 data-hilfe="auswertungen.saldo">Saldo-Verlauf</h2><div class="diagramm-unter" id="saldo-unter"></div></div></div>
+      <div class="diagramm-flaeche hoch"><canvas id="saldo-chart"></canvas></div>
+    </div>
+    <div class="zwei-spalten">
+      <div class="block">
+        <div class="diagramm-kopf"><div><h2 data-hilfe="auswertungen.cashflow">Cashflow</h2><div class="diagramm-unter" id="cashflow-unter"></div></div></div>
+        <div class="diagramm-flaeche"><canvas id="cashflow-chart"></canvas></div>
+      </div>
+      <div class="block">
+        <div class="diagramm-kopf"><div><h2 data-hilfe="auswertungen.kategorien">Kategorien</h2><div class="diagramm-unter" id="kategorien-unter"></div></div>
+          <div class="segment klein" id="kategorien-seite"><button type="button" data-wert="ausgabe" class="an">Ausgaben</button><button type="button" data-wert="einnahme">Einnahmen</button></div></div>
+        <div class="diagramm-flaeche" id="kategorien-flaeche"><canvas id="kategorien-chart"></canvas></div>
+        <p class="hinweis" data-hinweis="auswertungen.kategorien"></p>
+      </div>
+    </div>
+    </div>
+    </div>
+
+    <div class="auswertung-tab-inhalt" data-auswertung-tab-inhalt="darlehen">
+      <div class="block">
+        <div class="formular">
+          <div><label>Darlehen</label><select id="ad-auswahl"><option value="">Alle Darlehen</option></select></div>
+          <div><label>Zeitraum (Diagramme und Jahrestabelle)</label>
+            <select id="ad-zeitraum">
+              <option value="gesamt" selected>Gesamte Laufzeit</option>
+              <option value="5">Nächste 5 Jahre</option><option value="10">Nächste 10 Jahre</option>
+              <option value="20">Nächste 20 Jahre</option><option value="30">Nächste 30 Jahre</option>
+            </select>
+          </div>
+        </div>
+        <p class="hinweis" data-hinweis="auswertungen.darlehen"></p>
+      </div>
+      <div class="karten-raster" id="ad-kennzahlen"></div>
+      <div class="block">
+        <h2 data-hilfe="auswertungen.darlehen">Restschuld-Verlauf</h2>
+        <p class="hinweis" data-hinweis="auswertungen.zinsbindung"></p>
+        <div class="diagramm-flaeche"><canvas id="ad-restschuld-chart"></canvas></div>
+      </div>
+      <div class="block">
+        <h2 data-hilfe="auswertungen.darlehen">Zins und Tilgung je Jahr</h2>
+        <div class="diagramm-flaeche"><canvas id="ad-jahre-chart"></canvas></div>
+        <table class="auswertung-tabelle"><thead><tr><th>Jahr</th><th class="rechts">Zinsen</th><th class="rechts">Tilgung</th>
+          <th class="rechts">Sondertilgung</th><th class="rechts">Rate gesamt</th><th class="rechts">Restschuld Jahresende</th></tr></thead>
+          <tbody id="ad-jahre-tabelle"></tbody></table>
+      </div>
+      <div class="block">
+        <h2 data-hilfe="auswertungen.darlehen">Je Darlehen</h2>
+        <table class="auswertung-tabelle">
+          <thead>
+            <tr><th rowspan="2">Darlehen</th><th rowspan="2" class="rechts">Darlehens&shy;summe</th>
+              <th rowspan="2" class="rechts">Noch nicht ausgezahlt</th>
+              <th colspan="4" class="gruppe">Bisher (bis heute)</th><th colspan="4" class="gruppe">Gesamte Laufzeit</th>
+              <th rowspan="2" class="rechts">Restschuld heute</th><th rowspan="2" class="rechts">Restschuld Laufzeitende</th></tr>
+            <tr><th class="rechts">Zinsen</th><th class="rechts">Tilgung</th><th class="rechts">Sondertilg.</th><th class="rechts">Raten</th>
+              <th class="rechts">Zinsen</th><th class="rechts">Tilgung</th><th class="rechts">Sondertilg.</th><th class="rechts">Raten</th></tr>
+          </thead>
+          <tbody id="ad-darlehen-tabelle"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="auswertung-tab-inhalt" data-auswertung-tab-inhalt="altersvorsorge">
+      <div class="block">
+        <div class="formular">
+          <div><label>Vertrag</label><select id="aa-auswahl"><option value="">Alle Verträge</option></select></div>
+          <div><label>Zeitraum (Diagramme und Jahrestabelle)</label>
+            <select id="aa-zeitraum">
+              <option value="gesamt" selected>Gesamt (bis Planungshorizont)</option>
+              <option value="5">Nächste 5 Jahre</option><option value="10">Nächste 10 Jahre</option>
+              <option value="20">Nächste 20 Jahre</option><option value="30">Nächste 30 Jahre</option>
+            </select>
+          </div>
+        </div>
+        <p class="hinweis" data-hinweis="auswertungen.altersvorsorge"></p>
+        <div id="aa-meldungen"></div>
+      </div>
+      <div class="karten-raster" id="aa-kennzahlen"></div>
+      <div class="block">
+        <h2 data-hilfe="auswertungen.altersvorsorge">Beiträge und Auszahlungen je Jahr</h2>
+        <p class="hinweis" data-hinweis="auswertungen.aufsatz"></p>
+        <div class="diagramm-flaeche"><canvas id="aa-jahre-chart"></canvas></div>
+      </div>
+      <div class="block">
+        <h2 data-hilfe="auswertungen.altersvorsorge">Kumulierter Verlauf</h2>
+        <p class="hinweis" data-hinweis="auswertungen.kumuliert"></p>
+        <div class="diagramm-flaeche"><canvas id="aa-kumuliert-chart"></canvas></div>
+        <table class="auswertung-tabelle"><thead><tr><th>Jahr</th><th class="rechts">Beiträge</th>
+          <th class="rechts">Auszahlung garantiert</th><th class="rechts">Auszahlung voraussichtlich</th>
+          <th class="rechts">Kumuliert garantiert</th><th class="rechts">Kumuliert voraussichtlich</th></tr></thead>
+          <tbody id="aa-jahre-tabelle"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <section id="abschnitt-jahr" class="abschnitt">
+    <div class="kopfzeile"><h1 data-hilfe="jahr">Jahresübersicht</h1><label class="inflations-schalter" data-hinweis-titel="inflation.schalter" data-hilfe="auswertungen.inflation"><input type="checkbox" id="jahr-inflation" style="width:auto"> Inflation einrechnen</label></div>
+    <div class="formular" style="margin-bottom:6px">
+      <div><label>Zeitraum</label>
+        <select id="jahr-modus">
+          <option value="rollierend" selected>Rollierend 12 Monate</option>
+          <option value="kalenderjahr">Kalenderjahr</option>
+        </select>
+      </div>
+      <div id="jahr-auswahl-feld"><label>Jahr</label><select id="jahr-auswahl" style="width:auto"></select></div>
+      <div><label data-hilfe="auswertungen.auswahl">Konten</label><div class="mehrfach" id="jahr-filter-konten" data-art="konten"></div></div>
+      <div><label>Kategorien</label><div class="mehrfach" id="jahr-filter-kategorien" data-art="kategorien"></div></div>
+      <div><label>Person</label><select id="jahr-filter-person" class="person-auswahl"><option value="">Alle Personen</option></select></div>
+    </div>
+    <div class="karten-raster" id="jahr-kennzahlen"></div>
+    <div class="block">
+      <h2 data-hilfe="jahr.lesen">Monatsverlauf</h2>
+      <div class="diagramm-flaeche"><canvas id="jahr-chart"></canvas></div>
+      <table style="margin-top:16px"><thead><tr><th>Monat</th><th class="rechts">Einnahmen</th><th class="rechts">Ausgaben</th><th class="rechts">Saldo</th></tr></thead>
+      <tbody id="jahr-tabelle"></tbody></table>
+    </div>
+    <div class="block">
+      <h2 data-hilfe="jahr.lesen">Nach Hauptkategorie</h2>
+      <table><thead><tr><th>Kategorie</th><th>Art</th><th class="rechts">Anzahl</th><th class="rechts">Summe</th></tr></thead>
+      <tbody id="jahr-kategorien"></tbody></table>
+    </div>
+  </section>
+
+  <section id="abschnitt-hilfe" class="abschnitt">
+    <div class="hilfe-kopf">
+    <div class="kopfzeile"><h1>Hilfe</h1>
+      <span class="reihen-werkzeuge">
+        <button type="button" class="knopf sekundaer klein" id="hilfe-zurueck" style="display:none">← Zurück</button>
+        <a class="knopf sekundaer klein" href="api/hilfe/pdf" id="hilfe-pdf" download>PDF-Handbuch</a>
+        <span class="stempel" id="hilfe-version">–</span>
+      </span>
+    </div>
+    <div class="hilfe-suchzeile"><input type="search" id="hilfe-suche" placeholder="Hilfe durchsuchen …" autocomplete="off"></div>
+    </div>
+    <div class="hilfe-layout">
+      <nav class="hilfe-inhalt" id="hilfe-inhalt" aria-label="Inhaltsverzeichnis der Hilfe"></nav>
+      <article class="hilfe-text" id="hilfe-text"></article>
+    </div>
+  </section>
+
+  <section id="abschnitt-admin" class="abschnitt">
+    <div class="kopfzeile"><h1 data-hilfe="admin">Administration</h1></div>
+
+    <div class="admin-tabs">
+      <button type="button" class="admin-tab-knopf aktiv" data-admin-tab="stammdaten">Stammdaten</button>
+      <button type="button" class="admin-tab-knopf" data-admin-tab="system">System</button>
+      <button type="button" class="admin-tab-knopf" data-admin-tab="zuruecksetzen">Daten zurücksetzen</button>
+    </div>
+
+    <div class="admin-tab-inhalt aktiv" data-admin-tab-inhalt="stammdaten">
+
+      <details class="block">
+        <summary><h2 data-hilfe="admin.personen">Personen</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.personen"></p>
+          <form class="formular" id="form-person">
+            <div><label>Name</label><input name="name" required></div>
+            <div><label>Farbe (optional)</label><input type="color" name="farbe" value="#4a7fd6"></div>
+            <div><button class="knopf" type="submit">Anlegen</button></div>
+          </form>
+          <div id="personen-liste" style="margin-top:14px"></div>
+        </div>
+      </details>
+
+      <details class="block">
+        <summary><h2 data-hilfe="admin.kategorien">Kategorien</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.kategorien"></p>
+          <h3 style="margin:0 0 10px; font-family:var(--schrift-anzeige); font-weight:400; font-size:15px"><span id="kategorie-form-titel">Neue Kategorie</span></h3>
+          <form class="formular" id="form-kategorie">
+            <div><label>Name</label><input name="name" required></div>
+            <div><label>Oberkategorie</label><select name="parent_id" class="kategorie-auswahl"><option value="">– keine –</option></select></div>
+            <div class="reihen-werkzeuge">
+              <button class="knopf" type="submit" id="kategorie-submit">Anlegen</button>
+              <button class="knopf gefahr" type="button" id="kategorie-verwerfen" style="display:none">Änderung verwerfen</button>
+            </div>
+          </form>
+          <div id="kategorien-baum" style="margin-top:14px"></div>
+        </div>
+      </details>
+
+      <details class="block">
+        <summary><h2 data-hilfe="admin.inflationsfaktor">Inflationsfaktor</h2></summary>
+        <div class="details-inhalt">
+          <form class="formular" id="form-inflation">
+            <div><label>Faktor (% p.a.)</label><input type="number" step="0.1" name="inflationsfaktor" id="inflation-input"></div>
+            <div><button class="knopf" type="submit">Speichern</button></div>
+          </form>
+        </div>
+      </details>
+
+      <details class="block">
+        <summary><h2 data-hilfe="admin.export-import">Export &amp; Import (XLSX)</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.export"></p>
+          <p class="hinweis" data-hinweis="admin.import"></p>
+          <div class="formular" style="margin-bottom:14px">
+            <div><label>Buchungen von (optional)</label><input type="date" id="export-von"></div>
+            <div><label>Buchungen bis (optional)</label><input type="date" id="export-bis"></div>
+            <div class="reihen-werkzeuge">
+              <button type="button" class="knopf sekundaer klein" id="export-herunterladen">Export herunterladen (xlsx)</button>
+              <a class="knopf sekundaer klein" href="api/admin/import-vorlage" download>Leere Vorlage (xlsx)</a>
+            </div>
+          </div>
+          <form class="formular" id="form-import">
+            <div>
+              <label>Bereich (nur für CSV nötig)</label>
+              <select name="art">
+                <option value="">– bei xlsx automatisch je Tab –</option>
+                <option value="personen">Personen</option>
+                <option value="konten">Konten</option>
+                <option value="kategorien">Kategorien</option>
+                <option value="regeln">Regeln</option>
+                <option value="budget">Budgets</option>
+                <option value="darlehen">Darlehen</option>
+                <option value="auszahlungen">Darlehen-Auszahlungen</option>
+                <option value="altersvorsorge">Altersvorsorge</option>
+                <option value="wiederkehrend">Wiederkehrende Buchungen</option>
+                <option value="buchungen">Buchungen</option>
+              </select>
+            </div>
+            <div>
+              <label>Datei (csv oder xlsx)</label>
+              <div class="datei-auswahl">
+                <label for="import-datei-feld" class="knopf sekundaer klein">Datei wählen</label>
+                <span id="import-datei-name" class="hinweis">Keine Datei ausgewählt</span>
+                <input type="file" id="import-datei-feld" name="datei" accept=".csv,.xlsx" required style="display:none">
+              </div>
+            </div>
+            <div><button class="knopf" type="submit" id="import-pruefen">Prüfen (Vorschau)</button></div>
+          </form>
+          <div id="import-ergebnis" style="margin-top:14px"></div>
+        </div>
+      </details>
+
+      <details class="block">
+        <summary><h2 data-hilfe="admin.regeln">Automatische Kategorisierung</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.regeln"></p>
+          <form class="formular" id="form-regel">
+            <div><label>Muster (Textbestandteil)</label><input name="muster" placeholder="z. B. REWE" required></div>
+            <div><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" required></select></div>
+            <div><label>Priorität</label><input type="number" name="prioritaet" value="100"></div>
+            <div><button class="knopf" type="submit">Regel anlegen</button></div>
+          </form>
+          <table style="margin-top:12px"><thead><tr><th>Muster</th><th>Kategorie</th><th class="rechts">Priorität</th><th></th></tr></thead>
+          <tbody id="regeln-tabelle"></tbody></table>
+        </div>
+      </details>
+
+      <details class="block">
+        <summary><h2 data-hilfe="schnellbuchung.favoriten">Siri &amp; Schnellbuchung</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.siri"></p>
+          <div id="siri-favoriten-liste" style="margin-top:14px"></div>
+        </div>
+      </details>
+
+      <details class="block">
+        <summary><h2 data-hilfe="admin.vorzeichen">Vorzeichen prüfen</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.vorzeichen"></p>
+          <div class="reihen-werkzeuge">
+            <button class="knopf sekundaer" id="admin-vorzeichen-pruefen">Jetzt prüfen</button>
+            <button class="knopf" id="admin-vorzeichen-korrigieren" style="display:none">Alle korrigieren</button>
+          </div>
+          <div id="admin-vorzeichen-ergebnis"></div>
+        </div>
+      </details>
+
+      <details class="block" id="admin-sparziele-block">
+        <summary><h2 data-hilfe="admin.sparziele">Sparziele prüfen</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.sparziele"></p>
+          <div class="reihen-werkzeuge">
+            <button class="knopf sekundaer" id="admin-sparziele-pruefen">Jetzt prüfen</button>
+            <button class="knopf" id="admin-sparziele-loesen" style="display:none">Markierte Zuordnungen lösen</button>
+          </div>
+          <div id="admin-sparziele-ergebnis"></div>
+        </div>
+      </details>
+
+      <details class="block">
+        <summary><h2 data-hilfe="admin.feiertage">Feiertage</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.feiertage"></p>
+          <button class="knopf sekundaer" id="feiertage-aktualisieren">Neu berechnen</button>
+          <span id="feiertage-status" class="hinweis"></span>
+        </div>
+      </details>
+
+    </div>
+
+    <div class="admin-tab-inhalt" data-admin-tab-inhalt="system">
+
+      <div class="block">
+        <h2 data-hilfe="admin.serverzeit">Serverzeit</h2>
+        <p class="hinweis" id="systeminfo-zeit">–</p>
+        <p class="hinweis" data-hinweis="admin.serverzeit"></p>
+      </div>
+
+      <details class="block">
+        <summary><h2 data-hilfe="admin.menue">Menü-Reihenfolge</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.menue"></p>
+          <div id="reihenfolge-editor" class="reihenfolge-editor"></div>
+          <div class="reihen-werkzeuge" style="margin-top:8px">
+            <button class="knopf" id="reihenfolge-speichern">Speichern</button>
+            <span id="reihenfolge-status" class="hinweis"></span>
+          </div>
+        </div>
+      </details>
+
+      <details class="block">
+        <summary><h2 data-hilfe="admin.backups">Backups</h2></summary>
+        <div class="details-inhalt">
+          <div class="reihen-werkzeuge" style="margin-bottom:14px">
+            <button class="knopf sekundaer klein" id="backup-jetzt">Backup jetzt erstellen</button>
+            <a class="knopf sekundaer klein" href="api/admin/datenbank-herunterladen" download>Datenbank herunterladen</a>
+          </div>
+          <table><thead><tr><th>Erstellt am</th><th>Dateiname</th><th>Typ</th><th>Beschreibung</th><th></th></tr></thead><tbody id="backups-tabelle"></tbody></table>
+        </div>
+      </details>
+
+      <details class="block" id="admin-wiederherstellen-block">
+        <summary><h2 data-hilfe="admin.wiederherstellen">Datenbank wiederherstellen</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.wiederherstellen"></p>
+          <div class="reihen-werkzeuge">
+            <div class="datei-auswahl">
+              <label for="wh-datei-feld" class="knopf sekundaer klein">Datei wählen</label>
+              <span id="wh-datei-name" class="hinweis">Keine Datei ausgewählt</span>
+              <input type="file" id="wh-datei-feld" accept=".db,.sqlite,.sqlite3" style="display:none">
+            </div>
+            <button type="button" class="knopf" id="wh-pruefen" disabled>Prüfen</button>
+          </div>
+          <div class="warnung" id="wh-status" hidden></div>
+        </div>
+      </details>
+
+      <details class="block">
+        <summary><h2 data-hilfe="admin.farben">Farben</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="admin.farben"></p>
+          <form class="formular" id="form-theme-farben">
+            <div><label>Grundton (Sidebar/Buttons)</label><input type="color" name="farbe_grundton"></div>
+            <div><label>Akzent (Messing)</label><input type="color" name="farbe_messing"></div>
+            <div><label>Positiv (Grün)</label><input type="color" name="farbe_gruen"></div>
+            <div><label>Negativ (Rot)</label><input type="color" name="farbe_rot"></div>
+            <div><label>Hintergrund (Papier)</label><input type="color" name="farbe_papier"></div>
+            <div class="reihen-werkzeuge">
+              <button class="knopf" type="submit">Speichern</button>
+              <button class="knopf sekundaer" type="button" id="theme-farben-zuruecksetzen">Auf Standard zurücksetzen</button>
+            </div>
+          </form>
+        </div>
+      </details>
+
+    </div>
+    <div class="admin-tab-inhalt" data-admin-tab-inhalt="zuruecksetzen">
+      <div class="block">
+        <h2 data-hilfe="zuruecksetzen.ablauf">Daten zurücksetzen</h2>
+        <p class="warnung" data-hinweis="zuruecksetzen.warnung"></p>
+        <p class="hinweis" data-hinweis="zuruecksetzen.fragezeichen"></p>
+        <div id="reset-optionen"></div>
+        <div class="reihen-werkzeuge" style="margin-top:14px">
+          <button class="knopf gefahr" type="button" id="reset-start">Ausgewählte Daten löschen …</button>
+          <span id="reset-status" class="hinweis"></span>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+</main>
+
+<dialog id="darlehen-dialog" class="reset-dialog darlehen-dialog">
+  <div id="darlehen-dialog-inhalt"></div>
+</dialog>
+
+<dialog id="wh-dialog" class="reset-dialog">
+  <div id="wh-dialog-inhalt"></div>
+</dialog>
+<dialog id="reset-dialog" class="reset-dialog">
+  <div id="reset-dialog-inhalt"></div>
+</dialog>
+
+<script src="assets/vendor/chart.umd.min.js?v=5"></script>
+<script src="assets/app.js?v=20"></script>
+</body>
+</html>

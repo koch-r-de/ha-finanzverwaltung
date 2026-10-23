@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Schnellbuchung</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  body { display: block; background: var(--papier); }
+  .sb-huelle { max-width: 560px; margin: 0 auto; padding: 16px 14px 40px; }
+  .sb-kopf {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .sb-hilfe { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+    margin-left: 6px; border: 1px solid var(--linie-stark); border-radius: 50%; font-family: var(--schrift-text);
+    font-size: 12px; font-weight: 600; color: var(--tinte-70); text-decoration: none; vertical-align: middle; }
+  .sb-kopf h1 {
+    font-family: var(--schrift-anzeige); font-weight: 400; font-size: 22px; margin: 0;
+  }
+  .sb-feld { margin-bottom: 12px; }
+  .sb-feld label { font-size: 12px; margin-bottom: 5px; }
+  .sb-feld input, .sb-feld select { padding: 11px 10px; font-size: 16px; }
+  .sb-betrag input { font-size: 24px; font-family: var(--schrift-anzeige); text-align: right; }
+  .sb-rechnung { font-size: 12px; color: var(--tinte-45); text-align: right; min-height: 16px; margin-top: 3px; }
+  .sb-details { border-top: 1px solid var(--linie); margin-top: 14px; padding-top: 14px; }
+  .sb-umschalter {
+    background: none; border: none; color: var(--grundton); cursor: pointer;
+    font-size: 13px; padding: 8px 0; width: 100%; text-align: left;
+  }
+  .sb-knoepfe { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+  .sb-knoepfe .knopf { padding: 13px 10px; font-size: 15px; text-align: center; }
+  .sb-meldung { margin-top: 14px; }
+  .sb-erfolg {
+    background: #2f7d4f18; border: 1px solid #2f7d4f55; color: var(--gruen);
+    border-radius: var(--radius); padding: 10px 12px; font-size: 13.5px;
+  }
+  .sb-letzte { margin-top: 22px; font-size: 12.5px; color: var(--tinte-70); }
+  .sb-letzte table { font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="sb-huelle">
+
+  <div class="sb-kopf">
+    <h1>Schnellbuchung <a class="sb-hilfe" href="./#hilfe:schnellbuchung.nutzen" title="Hilfe zur Schnellbuchung" aria-label="Hilfe zur Schnellbuchung">?</a></h1>
+    <span class="stempel" id="sb-datum">–</span>
+  </div>
+
+  <form id="sb-form">
+    <div class="sb-feld sb-betrag">
+      <label>Betrag (€)</label>
+      <input type="text" inputmode="decimal" name="betrag" id="sb-betrag"
+             placeholder="0,00" autocomplete="off" required>
+      <div class="sb-rechnung" id="sb-rechnung"></div>
+    </div>
+
+    <div class="sb-feld">
+      <label>Konto</label>
+      <select name="konto_id" id="sb-konto" required></select>
+    </div>
+
+    <div class="sb-feld" id="sb-kategorie-feld">
+      <label>Kategorie</label>
+      <select name="kategorie_id" id="sb-kategorie"></select>
+    </div>
+
+    <div class="sb-feld">
+      <label>Beschreibung</label>
+      <input name="beschreibung" id="sb-beschreibung" autocomplete="off">
+    </div>
+
+    <button type="button" class="sb-umschalter" id="sb-details-schalter">▸ Weitere Angaben</button>
+
+    <div class="sb-details" id="sb-details" style="display:none">
+      <div class="sb-feld">
+        <label>Buchungstyp</label>
+        <select name="typ" id="sb-typ">
+          <option value="Ist" selected>Ist</option>
+          <option value="Plan">Plan</option>
+          <option value="Uebertragung">Übertragung</option>
+        </select>
+      </div>
+      <div class="sb-feld">
+        <label>Datum</label>
+        <input type="date" name="datum" id="sb-datum-feld" required autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
+      </div>
+      <div class="sb-feld" id="sb-zielkonto-feld" style="display:none">
+        <label>Zielkonto</label>
+        <select name="zielkonto_id" id="sb-zielkonto"></select>
+      </div>
+      <div class="sb-feld" id="sb-sparziel-feld" style="display:none">
+        <label>Sparziel zuordnen</label>
+        <select name="sparziel_id" id="sb-sparziel"><option value="">– keines –</option></select>
+      </div>
+    </div>
+
+    <div class="sb-knoepfe">
+      <button type="submit" class="knopf" id="sb-speichern">Speichern</button>
+      <button type="button" class="knopf sekundaer" id="sb-speichern-weiter">Speichern &amp; weiter</button>
+    </div>
+  </form>
+
+  <div class="sb-meldung" id="sb-meldung"></div>
+
+  <div class="sb-letzte">
+    <strong>Zuletzt gebucht</strong>
+    <table><tbody id="sb-letzte-tabelle"></tbody></table>
+  </div>
+
+</div>
+
+<script>
+const API = "api";
+let KONTEN = [], KATEGORIEN = [];
+
+async function api(pfad, optionen = {}) {
+  const antwort = await fetch(API + pfad, {
+    headers: { "Content-Type": "application/json" }, ...optionen });
+  if (!antwort.ok) throw new Error(`API-Fehler ${antwort.status}: ${await antwort.text()}`);
+  const typ = antwort.headers.get("content-type") || "";
+  return typ.includes("application/json") ? antwort.json() : null;
+}
+
+const euro = (n) => new Intl.NumberFormat("de-DE",
+  { style: "currency", currency: "EUR" }).format(n ?? 0);
+
+// ─── Taschenrechner-Logik im Betragsfeld ──────────────────────────
+// Erlaubt Eingaben wie "12,50+8,30" direkt an der Kasse.
+function betragAuswerten(text) {
+  if (!text) return null;
+  const bereinigt = text.replace(/\s/g, "").replace(/,/g, ".");
+  if (!/^[0-9.+\-*/()]+$/.test(bereinigt)) return null;
+  try {
+    const wert = Function(`"use strict"; return (${bereinigt});`)();
+    return typeof wert === "number" && isFinite(wert) ? Math.round(wert * 100) / 100 : null;
+  } catch { return null; }
+}
+
+document.getElementById("sb-betrag").addEventListener("input", (e) => {
+  const anzeige = document.getElementById("sb-rechnung");
+  const roh = e.target.value;
+  if (/[+\-*/]/.test(roh.slice(1))) {
+    const wert = betragAuswerten(roh);
+    anzeige.textContent = wert === null ? "" : "= " + euro(wert);
+  } else {
+    anzeige.textContent = "";
+  }
+});
+
+// ─── Kontext-Gedächtnis ───────────────────────────────────────────
+const SPEICHER = "finanzapp.schnellbuchung";
+function kontextLesen() {
+  try { return JSON.parse(localStorage.getItem(SPEICHER) || "{}"); } catch { return {}; }
+}
+function kontextSchreiben(daten) {
+  try { localStorage.setItem(SPEICHER, JSON.stringify(daten)); } catch {}
+}
+
+// ─── Laden ────────────────────────────────────────────────────────
+function kategorieOptionen(parentId, praefix) {
+  return KATEGORIEN.filter((k) => k.parent_id === parentId)
+    .flatMap((k) => [`<option value="${k.id}">${praefix}${k.name}</option>`,
+                     ...kategorieOptionen(k.id, praefix + "— ")]).join("");
+}
+
+async function laden() {
+  [KONTEN, KATEGORIEN] = await Promise.all([api("/konten"), api("/kategorien")]);
+  const kontoHtml = KONTEN.map((k) => `<option value="${k.id}">${k.name}</option>`).join("");
+  document.getElementById("sb-konto").innerHTML = kontoHtml;
+  document.getElementById("sb-zielkonto").innerHTML = kontoHtml;
+
+  const favoriten = KATEGORIEN.filter((k) => k.siri_favorit);
+  document.getElementById("sb-kategorie").innerHTML =
+    (favoriten.length ? `<optgroup label="Favoriten">${favoriten.map((k) =>
+      `<option value="${k.id}">${k.name}</option>`).join("")}</optgroup>` : "") +
+    `<optgroup label="Alle Kategorien">${kategorieOptionen(null, "")}</optgroup>`;
+
+  try {
+    SB_SPARZIELE = await api("/sparziele");
+    sbSparzieleFiltern();
+  } catch {}
+
+  // Lokales Datum (seit v1.10): toISOString() liefert UTC und damit zwischen
+  // 0 und 1 Uhr (Sommerzeit 2 Uhr) noch den Vortag.
+  const jetzt = new Date();
+  const heute = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, "0")}-${String(jetzt.getDate()).padStart(2, "0")}`;
+  document.getElementById("sb-datum-feld").value = heute;
+  document.getElementById("sb-datum").textContent =
+    new Date().toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
+
+  const ktx = kontextLesen();
+  if (ktx.konto_id && KONTEN.some((k) => k.id == ktx.konto_id))
+    document.getElementById("sb-konto").value = ktx.konto_id;
+  if (ktx.kategorie_id && KATEGORIEN.some((k) => k.id == ktx.kategorie_id))
+    document.getElementById("sb-kategorie").value = ktx.kategorie_id;
+
+  await letzteLaden();
+}
+
+async function letzteLaden() {
+  const liste = await api("/buchungen?herkunft=manuell&typ=Ist");
+  const letzte = liste.slice(-5).reverse();
+  document.getElementById("sb-letzte-tabelle").innerHTML = letzte.map((b) => `
+    <tr><td>${b.datum}</td><td>${b.beschreibung || "–"}</td>
+    <td class="rechts zahl ${b.betrag < 0 ? "negativ" : "positiv"}">${euro(b.betrag)}</td></tr>`
+  ).join("") || `<tr><td class="leer">Noch nichts gebucht</td></tr>`;
+}
+
+// ─── Details ausklappen ───────────────────────────────────────────
+document.getElementById("sb-details-schalter").addEventListener("click", () => {
+  const d = document.getElementById("sb-details");
+  const offen = d.style.display !== "none";
+  d.style.display = offen ? "none" : "block";
+  document.getElementById("sb-details-schalter").textContent =
+    (offen ? "▸" : "▾") + " Weitere Angaben";
+});
+
+document.getElementById("sb-typ").addEventListener("change", (e) => {
+  const ist = e.target.value === "Uebertragung";
+  document.getElementById("sb-zielkonto-feld").style.display = ist ? "block" : "none";
+  document.getElementById("sb-sparziel-feld").style.display = ist ? "block" : "none";
+  document.getElementById("sb-kategorie-feld").style.display = ist ? "none" : "block";
+  sbSparzieleFiltern();
+});
+
+// Sparziele (seit v2.0): nur solche anbieten, deren Trägerkonto Quelle oder
+// Ziel der Übertragung ist (Einzahlung bzw. Entnahme).
+let SB_SPARZIELE = [];
+function sbSparzieleFiltern() {
+  const sel = document.getElementById("sb-sparziel");
+  const bisher = sel.value;
+  const konten = [document.getElementById("sb-konto").value, document.getElementById("sb-zielkonto").value].map(Number);
+  const passend = SB_SPARZIELE.filter((z) => konten.includes(z.konto_id));
+  sel.innerHTML = '<option value="">– keines –</option>' +
+    passend.map((z) => `<option value="${z.id}">${z.name}</option>`).join("");
+  if (passend.some((z) => String(z.id) === bisher)) sel.value = bisher;
+}
+document.getElementById("sb-konto").addEventListener("change", sbSparzieleFiltern);
+document.getElementById("sb-zielkonto").addEventListener("change", sbSparzieleFiltern);
+
+// ─── Speichern ────────────────────────────────────────────────────
+async function speichern(weiter) {
+  const form = document.getElementById("sb-form");
+  const betrag = betragAuswerten(document.getElementById("sb-betrag").value);
+  if (betrag === null || betrag === 0) {
+    zeigeMeldung("Bitte einen gültigen Betrag eingeben.", true);
+    return;
+  }
+  const typ = document.getElementById("sb-typ").value;
+  const kontoId = Number(document.getElementById("sb-konto").value);
+  const kategorieId = document.getElementById("sb-kategorie").value;
+
+  const koerper = {
+    konto_id: kontoId,
+    datum: document.getElementById("sb-datum-feld").value,
+    betrag: betrag,
+    kategorie_id: typ === "Uebertragung" ? null : (kategorieId ? Number(kategorieId) : null),
+    typ: typ,
+    beschreibung: document.getElementById("sb-beschreibung").value || null,
+    zielkonto_id: typ === "Uebertragung" ? Number(document.getElementById("sb-zielkonto").value) : null,
+    sparziel_id: typ === "Uebertragung" && document.getElementById("sb-sparziel").value
+      ? Number(document.getElementById("sb-sparziel").value) : null,
+  };
+
+  try {
+    const antwort = await api("/buchungen", { method: "POST", body: JSON.stringify(koerper) });
+    kontextSchreiben({ konto_id: kontoId, kategorie_id: kategorieId });
+
+    let text = `Gebucht: ${euro(betrag)}`;
+    if (antwort.auto_kategorie) {
+      const k = KATEGORIEN.find((x) => x.id === antwort.auto_kategorie);
+      text += ` · Kategorie automatisch erkannt: ${k ? k.name : "–"}`;
+    }
+    if (antwort.duplikat) {
+      text += `<br><strong>Hinweis:</strong> Am selben Tag ist auf diesem Konto bereits ein
+               gleicher Betrag gebucht („${antwort.duplikat.beschreibung || "ohne Beschreibung"}“).
+               Falls versehentlich doppelt, in der Buchungsliste löschen.`;
+    }
+    zeigeMeldung(text, false);
+
+    document.getElementById("sb-betrag").value = "";
+    document.getElementById("sb-beschreibung").value = "";
+    document.getElementById("sb-rechnung").textContent = "";
+    await letzteLaden();
+
+    if (weiter) {
+      document.getElementById("sb-betrag").focus();
+    }
+  } catch (e) {
+    zeigeMeldung(e.message, true);
+  }
+}
+
+function zeigeMeldung(text, fehler) {
+  document.getElementById("sb-meldung").innerHTML =
+    `<div class="${fehler ? "warnung" : "sb-erfolg"}">${text}</div>`;
+  if (!fehler) setTimeout(() => {
+    const m = document.getElementById("sb-meldung");
+    if (m.textContent.includes("Gebucht")) m.innerHTML = "";
+  }, 8000);
+}
+
+document.getElementById("sb-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  speichern(false);
+});
+document.getElementById("sb-speichern-weiter").addEventListener("click", () => speichern(true));
+
+laden();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Daten und Laufzeit
+*.db
+*.db-journal
+*.db.neu
+Backups/
+logs/
+# Ausnahme: anonymisierte Testdatenbanken
+!tests/daten/**/finanzdaten.db
+
+# Python
+__pycache__/
+*.pyc
+
+# Testausgaben
+tests/ausgabe/
+
+# Arbeitsunterlagen, die nicht ins Repository gehören
+FinanzverwaltungZusammenfassung_*.docx
+Testfaelle_*.xlsx
