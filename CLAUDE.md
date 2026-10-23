@@ -150,7 +150,9 @@ aktualisieren: Erwartungen relativ zu heute formulieren (zum Beispiel
 „nächster Werktag“ statt „morgen“, Monatsgrenzen aus dem Zeitraum ableiten)
 oder die Testdatenbanken in `tests/daten/` mit aktuellem Datum neu erzeugen.
 Dabei die Testdaten erfunden halten und keine echten Personendaten
-übernehmen. Die Änderung im Commit und in `tests/README.md` vermerken. Neue Funktionen bekommen eine eigene
+übernehmen. Die Änderung im Commit und in `tests/README.md` vermerken.
+
+Neue Funktionen bekommen eine eigene
 Testreihe `vXY_test.py` (fachlich) und `uiXY_test.py` (Oberfläche), mit
 Fehlerfällen, nicht nur dem Erfolgsweg. Bei Update-relevanten Änderungen
 zusätzlich `upgrade_test.py` mit einer Datenbank der Vorversion.
