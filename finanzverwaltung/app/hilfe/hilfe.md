@@ -1,5 +1,5 @@
 # Hilfe zur Finanzverwaltung
-Programmversion: 2.6
+Programmversion: 2.6.1
 
 ## Erste Schritte
 <!-- kapitel: erste-schritte -->

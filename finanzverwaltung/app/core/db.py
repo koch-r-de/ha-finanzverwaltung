@@ -650,6 +650,28 @@ def _migriere_feiertage_v26(conn) -> list[str]:
     return schritte
 
 
+def _korrigiere_zielkonto_ohne_uebertragung_v261(conn) -> list[str]:
+    """Befund P (2.6.1): Bis 2.6 speicherte „Neue Buchung“ bei Ist und Plan
+    das Zielkonto aus dem verborgenen Auswahlfeld. Einmalig (Merker) wird es
+    bei allen Buchungen geleert, die keine Übertragung sind. Backup nur,
+    wenn es etwas zu korrigieren gibt."""
+    merker = "korrektur_zielkonto_v261_erledigt"
+    if conn.execute("SELECT 1 FROM einstellungen WHERE key = ? AND value = '1'", (merker,)).fetchone():
+        return []
+    anzahl = conn.execute(
+        "SELECT COUNT(*) FROM buchungen WHERE typ <> 'Uebertragung' AND zielkonto_id IS NOT NULL").fetchone()[0]
+    schritte = []
+    if anzahl:
+        from .backup import backup_erstellen
+        datei = backup_erstellen(conn, "manuell", beschreibung="vor Korrektur Zielkonto 2.6.1")
+        schritte.append(f"Backup vor der Korrektur des Zielkontos: {datei}")
+        conn.execute("UPDATE buchungen SET zielkonto_id = NULL WHERE typ <> 'Uebertragung' AND zielkonto_id IS NOT NULL")
+        schritte.append(f"Zielkonto bei {anzahl} Ist- bzw. Plan-Buchung(en) entfernt (Befund P)")
+    conn.execute("INSERT OR REPLACE INTO einstellungen (key, value) VALUES (?, '1')", (merker,))
+    conn.commit()
+    return schritte
+
+
 def initialisieren() -> dict:
     """Legt die Datenbank an (falls nötig), führt Schema und Migration aus."""
     neu = not DB_PFAD.exists()
@@ -670,6 +692,7 @@ def initialisieren() -> dict:
         schritte += _migriere_kategorien_v22(conn, neu)
         schritte += _migriere_alte_plan_buchungen(conn)
         schritte += _migriere_kuenftige_saldo_korrekturen(conn)
+        schritte += _korrigiere_zielkonto_ohne_uebertragung_v261(conn)
         korrigiert = korrigiere_vorlagen_vorzeichen(conn)
         if korrigiert:
             schritte.append(f"{korrigiert} Vorlage(n) mit unpassendem Vorzeichen automatisch korrigiert")

@@ -212,8 +212,12 @@ def buchung_anlegen(conn, *, konto_id: int, datum: date, betrag: float, kategori
         # Zielkonto) gebucht - siehe Modul-Docstring.
         kategorie_id = umbuchung_kategorie_id(conn)
         betrag = abs(betrag)
-    elif vorzeichen_ableiten:
-        betrag = vorzeichen_anwenden(conn, kategorie_id, betrag)
+    else:
+        # Zielkonto gibt es nur bei Übertragungen, wie in buchung_bearbeiten
+        # (seit 2.6.1, Befund P: das Formular schickte das verborgene Feld mit).
+        zielkonto_id = None
+        if vorzeichen_ableiten:
+            betrag = vorzeichen_anwenden(conn, kategorie_id, betrag)
 
     cur = conn.execute(
         """INSERT INTO buchungen

@@ -138,6 +138,33 @@ neuen Darlehen); die Karte zeigt daraus den noch nicht ausgezahlten Rest.
 Bestehende Darlehen bleiben ohne Summe, bis sie über "Ändern" nachgetragen
 wird.
 
+## Neu in Version 2.6.1
+
+**Befund P (gefunden beim Oberflächentest zu 2.6, besteht seit mindestens
+2.5):** Das Formular „Neue Buchung“ schickte bei Typ „Ist“ und „Plan“ das
+Zielkonto aus dem verborgenen Auswahlfeld mit (das Feld hat immer einen Wert,
+das erste Konto), und `buchung_anlegen()` speicherte es ungeprüft. Beim Ändern
+leerte `buchung_bearbeiten()` es dagegen schon richtig. Folgen: Anzeige „A → B“
+in der Buchungsliste, Kontofilter und Suche zeigten die Buchung zusätzlich
+beim fremden Konto, der Export füllte die Spalte „zielkonto“, und eine solche
+Zeile ließ sich nach Änderung nicht wieder importieren. Salden und
+Auswertungen waren nicht betroffen, weil sie den Zugang nur bei Typ
+„Uebertragung“ zählen.
+
+Behebung: `buchung_anlegen()` verwirft das Zielkonto außer bei Übertragungen
+(wie `buchung_bearbeiten()`), das Formular sendet es nur bei Übertragungen.
+Eine einmalige Korrektur beim ersten Start (Merker
+`korrektur_zielkonto_v261_erledigt`) leert es bei allen bestehenden Ist- und
+Plan-Buchungen. Gibt es etwas zu korrigieren, legt sie vorher das Backup „vor
+Korrektur Zielkonto 2.6.1“ an. Start-Status und Protokoll nennen die Anzahl.
+Lehre: verborgene Formularfelder nur senden, wenn sie fachlich gelten, und im
+Server beim Anlegen genauso prüfen wie beim Ändern.
+
+Tests: neue Reihe `v261_test.py` (Korrektur, Backup, Merker, Anlegen je Typ,
+Kontofilter, zweiter Start), Gegenprobe mit dem Code von 2.6 scheitert wie
+erwartet. `ui26_test.py` prüft die Buchungsliste, `upgrade_test.py` legt im
+Lauf der Vorversion eine fehlerhafte Ist-Buchung an.
+
 ## Neu in Version 2.6
 
 **Feiertagskalender wählbar:** Beim ersten Start fragt das Programm nach dem
@@ -262,13 +289,7 @@ hoch und vergleicht nach dem Start mit 2.6 alle Tabellen. Die
 Oberflächenreihen der Vorversionen starten mit gewähltem NRW, sonst würde
 die Pflichtabfrage sie blockieren.
 
-**Befund P (gefunden beim Oberflächentest, besteht seit mindestens 2.5):**
-Das Formular „Neue Buchung“ schickt bei Typ „Ist“ und „Plan“ das Zielkonto
-aus dem verborgenen Auswahlfeld mit, `buchung_anlegen()` speichert es
-ungeprüft. Folgen: Anzeige „A → B“ in der Buchungsliste, Kontofilter und
-Suche zeigen die Buchung zusätzlich beim fremden Konto, der Export füllt die
-Spalte „zielkonto“. Salden und Auswertungen sind nicht betroffen. Behebung
-vorgeschlagen, noch nicht freigegeben.
+**Befund P:** siehe „Neu in Version 2.6.1“.
 
 ## Neu in Version 2.5
 

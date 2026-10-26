@@ -13,6 +13,7 @@ Geprüft wird:
 - bestehende Zeilen aller Tabellen unverändert (neue Spalten und neue Zeilen
   erlaubt, entfernte Tabellen werden genannt)
 - zweiter Start: keine Migration, keine neuen Buchungen
+- 2.6.1: Befund P, Zielkonto bei Ist/Plan geleert, Übertragungen unverändert
 - 2.6: Tabelle feiertage entfernt, NRW als Vorschlag, Umstellungstag gemerkt,
   keine doppelten Termine für Termine, die die Vorversion nach NRW vorgezogen
   gebucht hat (Übergang), danach Bundesland wählbar und Hinweise nutzbar
@@ -68,6 +69,13 @@ alt = lauf(code_alt, ziel, zeit_alt, """
 st = c.get("/api/start-status").json()
 ERG["version"] = st["version"]
 ERG["salden"] = {k["name"]: k["saldo"] for k in c.get("/api/konten").json()}
+# Befund P (bis 2.6): Ist-Buchung mit Zielkonto, wie sie das Formular anlegte
+konten = c.get("/api/konten").json()
+kat = next(k["id"] for k in c.get("/api/kategorien").json() if k["name"] == "Lebensmittel/Verpflegung")
+ERG["befund_p"] = c.post("/api/buchungen", json={"konto_id": konten[0]["id"], "zielkonto_id": konten[1]["id"],
+    "datum": "2026-10-20", "betrag": 4.5, "kategorie_id": kat, "typ": "Ist", "beschreibung": "Befund P"}).json()["id"]
+ERG["uebertragung"] = c.post("/api/buchungen", json={"konto_id": konten[0]["id"], "zielkonto_id": konten[1]["id"],
+    "datum": "2026-10-20", "betrag": 10, "typ": "Uebertragung", "beschreibung": "Echte Übertragung"}).json()["id"]
 """)
 print("Vorversion gestartet, Salden:", alt["salden"])
 vorher = schnappschuss(DB)
@@ -100,14 +108,20 @@ for t, (spalten, zeilen) in vorher.items():
         r = tuple(r[i] for i in alt_idx)
         if t == "einstellungen":
             continue   # Schlüssel/Wert: unten gesondert
-        if alt_spalten.get(r[0]) != r:
+        n = alt_spalten.get(r[0])
+        if t == "buchungen" and n is not None:
+            # Befund P (2.6.1): zielkonto_id bei Nicht-Übertragungen wird geleert, unten gesondert geprüft
+            iz, it = spalten.index("zielkonto_id") + 1, spalten.index("typ") + 1
+            if r[it] != "Uebertragung":
+                r, n = r[:iz] + (None,) + r[iz + 1:], n[:iz] + (None,) + n[iz + 1:]
+        if n != r:
             abweichend.append((t, r, alt_spalten.get(r[0])))
             break
     neue_zeilen = len(z2) - len(zeilen)
     if neue_zeilen and t not in NUR_ZUWACHS and t != "einstellungen":
         abweichend.append((t, f"{neue_zeilen} neue Zeilen"))
 pruef("Bestehende Zeilen aller Tabellen unverändert (neue Spalten erlaubt)", not abweichend, abweichend[:3])
-pruef("Entfernt nur die Tabelle feiertage", set(entfernt) == ENTFERNT_ERLAUBT, entfernt)
+pruef("Entfernt höchstens die Tabelle feiertage (von 2.6 aus schon entfernt)", set(entfernt) <= ENTFERNT_ERLAUBT, entfernt)
 e_vorher = {r[1]: r[2] for r in vorher["einstellungen"][1]}
 e_nachher = {r[1]: r[2] for r in nachher["einstellungen"][1]}
 pruef("Einstellungen: alle bisherigen Werte unverändert",
@@ -116,6 +130,15 @@ pruef("Einstellungen 2.6: Bundesland leer, Vorschlag NRW",
       e_nachher.get("bundesland") == "" and e_nachher.get("bundesland_vorschlag") == "NW",
       {k: e_nachher.get(k) for k in ("bundesland", "bundesland_vorschlag")})
 pruef("Regionen-Endpunkt: nichts gewählt, Vorschlag NRW", neu["regionen"]["gewaehlt"] == "" and neu["regionen"]["vorschlag"] == "NW")
+
+c = sqlite3.connect(DB)
+falsch = c.execute("SELECT COUNT(*) FROM buchungen WHERE typ <> 'Uebertragung' AND zielkonto_id IS NOT NULL").fetchone()[0]
+pruef("Befund P: kein Zielkonto mehr bei Ist- und Plan-Buchungen, echte Übertragung behält es",
+      falsch == 0 and c.execute("SELECT zielkonto_id FROM buchungen WHERE id = ?", (alt["uebertragung"],)).fetchone()[0]
+      and c.execute("SELECT zielkonto_id FROM buchungen WHERE id = ?", (alt["befund_p"],)).fetchone()[0] is None)
+pruef("Befund P: Backup vor der Korrektur, Schritt im Start-Status",
+      any("Zielkonto bei" in m for m in neu["migration"]) and any("Korrektur des Zielkontos" in m for m in neu["migration"]))
+c.close()
 
 # Übergang: kein Termin doppelt (gleiche Quelle, gleiche Kategorie, Abstand unter 5 Tagen)
 c = sqlite3.connect(DB)

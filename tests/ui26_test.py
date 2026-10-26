@@ -82,6 +82,8 @@ with sync_playwright() as p:
     pruef("Buchung am Feiertag wird gespeichert (nichts gesperrt) und in der Liste markiert",
           zeile.count() == 1 and marke.count() == 1
           and marke.get_attribute("title") == "03.10.2026 ist ein Feiertag (Tag der Deutschen Einheit).")
+    pruef("Befund P (2.6.1): Ist-Buchung aus dem Formular ohne Zielkonto (kein „→“ in der Spalte Konto)",
+          zeile.count() == 1 and "→" not in zeile.locator("td").nth(1).inner_text())
     pruef("Nach dem Buchen: Hinweis passt zum zurückgesetzten Datum (heute)",
           page.input_value(feld) != "2026-10-03" and "03.10.2026" not in hinweis_bei(feld))
     page.select_option("#buchungen-filter-herkunft", "anstehend"); page.wait_for_timeout(1200)

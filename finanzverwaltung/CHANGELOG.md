@@ -2,6 +2,10 @@
 
 Ausführlich zu jeder Version: DOCS.md, Abschnitte „Neu in Version …“.
 
+## 2.6.1
+
+- Korrektur: „Neue Buchung“ speicherte bei Ist und Plan ein Zielkonto, Anzeige „A → B“ und falsche Treffer im Kontofilter (Befund P). Bestehende Buchungen werden einmalig korrigiert, mit Backup vorher.
+
 ## 2.6
 
 - Feiertagskalender wählbar: Bundesland beim ersten Start (Pflicht), änderbar in der Administration, regionale Sonderfälle als eigene Einträge.

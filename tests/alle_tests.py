@@ -34,6 +34,7 @@ FACHLICH = [
     ("v23", "v23_test.py", "ausgabe:v2", []),
     ("v24", "v24_test.py", "v191", [str(DATEN / "v21")]),
     ("v26", "v26_test.py", "v21", []),
+    ("v261", "v261_test.py", "v21", []),
 ]
 OBERFLAECHE = [
     ("ui", "ui_test.py", "v191", []),

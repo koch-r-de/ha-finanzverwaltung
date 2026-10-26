@@ -33,6 +33,7 @@ Für die Oberflächentests startet das Skript den Server auf Port 8935.
 | `v22_test.py` | 2.2: empfohlene Kategorien, Kategorie-Umstellung | `daten/v20` |
 | `v23_test.py` | 2.3: Mehrfachfilter, Saldo je Kategorie, Kennzahlen | Ergebnis von `v2_test.py` |
 | `v24_test.py` | 2.4: Datenbank wiederherstellen, Backup-Namen | `daten/v191`, eingespielt wird `daten/v21` |
+| `v261_test.py` | 2.6.1: Befund P, Zielkonto nur bei Übertragungen, Datenkorrektur | `daten/v21` mit eingestreuten Altfehlern |
 | `v26_test.py` | 2.6: Feiertage (Ostern, Intervalle, Sonderfälle, Verschiebung, Migration, Hinweise, Siri, Import) | `daten/v21` |
 | `ui*_test.py` | Oberfläche der jeweiligen Version (Playwright) | `daten/v191`, ergänzt durch `ui_vorbereiten.py` |
 | `ui26_test.py` | 2.6: Bundesland-Abfrage, Hinweise, Symbol in der Liste, Dialoge | `daten/v191` ohne gewähltes Bundesland |

@@ -1,5 +1,5 @@
 name: "Private Finanzverwaltung"
-version: "2.6"
+version: "2.6.1"
 slug: "finanzverwaltung"
 description: "Private Finanzverwaltung mit Konten, Budgets, Darlehen und Auswertungen"
 url: "https://github.com/koch-r-de/ha-finanzverwaltung"

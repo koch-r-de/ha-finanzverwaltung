@@ -20,11 +20,11 @@ COPY run.sh /
 RUN chmod a+x /run.sh
 
 LABEL \
-  io.hass.version="2.6" \
+  io.hass.version="2.6.1" \
   io.hass.type="addon" \
   io.hass.arch="amd64|aarch64"
 
-ENV FINANZAPP_VERSION="2.6"
+ENV FINANZAPP_VERSION="2.6.1"
 ENV FINANZAPP_VERSION_DATUM="2026-10-26"
 
 CMD [ "/run.sh" ]

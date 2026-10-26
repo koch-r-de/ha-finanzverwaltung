@@ -973,7 +973,9 @@ document.getElementById("form-buchung").addEventListener("submit", async (e) => 
     konto_id: Number(d.konto_id), datum: d.datum, betrag: Number(d.betrag),
     kategorie_id: d.typ === "Uebertragung" ? null : (d.kategorie_id ? Number(d.kategorie_id) : null),
     typ: d.typ, beschreibung: d.beschreibung || null,
-    zielkonto_id: d.zielkonto_id ? Number(d.zielkonto_id) : null,
+    // Zielkonto nur bei Übertragungen (seit 2.6.1, Befund P: das verborgene
+    // Auswahlfeld hat immer einen Wert)
+    zielkonto_id: d.typ === "Uebertragung" && d.zielkonto_id ? Number(d.zielkonto_id) : null,
     // Sparziel nur bei Übertragungen (seit v2.0, Server prüft ebenfalls)
     sparziel_id: d.typ === "Uebertragung" && d.sparziel_id ? Number(d.sparziel_id) : null,
   });
