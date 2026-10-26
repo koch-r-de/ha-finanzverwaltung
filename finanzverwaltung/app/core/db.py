@@ -627,6 +627,29 @@ def _repariere_dynamik_ohne_prozent(conn) -> int:
     return cur.rowcount
 
 
+def _migriere_feiertage_v26(conn) -> list[str]:
+    """Seit v2.6 werden Feiertage nicht mehr gespeichert, sondern aus der
+    Regeltabelle in feiertage.py berechnet. Die alte Tabelle feiertage enthielt
+    nur abgeleitete Werte (bei jedem Start gelöscht und neu gefüllt) und wird
+    ohne Backup entfernt. Ihr Vorhandensein zeigt eine Datenbank von vor 2.6:
+    Dort war fest NRW eingestellt, daher wird NRW als Vorschlag für die
+    einmalige Abfrage des Bundeslands hinterlegt. Gefahrlos wiederholbar,
+    auch nach dem Einspielen eines alten Backups."""
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'feiertage'").fetchone():
+        return []
+    schritte = []
+    gewaehlt = conn.execute("SELECT value FROM einstellungen WHERE key = 'bundesland'").fetchone()
+    if not (gewaehlt and gewaehlt["value"]):
+        from .feiertage import VORSCHLAG_BESTAND
+        conn.execute("INSERT OR REPLACE INTO einstellungen (key, value) VALUES ('bundesland_vorschlag', ?)",
+                     (VORSCHLAG_BESTAND,))
+        schritte.append("Bundesland noch nicht gewählt, Nordrhein-Westfalen als Vorschlag hinterlegt")
+    conn.execute("DROP TABLE feiertage")
+    conn.commit()
+    schritte.append("Tabelle feiertage entfernt (Feiertage werden jetzt berechnet)")
+    return schritte
+
+
 def initialisieren() -> dict:
     """Legt die Datenbank an (falls nötig), führt Schema und Migration aus."""
     neu = not DB_PFAD.exists()
@@ -638,6 +661,7 @@ def initialisieren() -> dict:
         conn.commit()
         if not neu:
             schritte += _migriere_schema(conn)
+        schritte += _migriere_feiertage_v26(conn)
         schritte += _migriere_altersvorsorge_einzahlung_optional(conn)
         schritte += _migriere_system_kategorien(conn)
         schritte += _migriere_kategorie_typen(conn)

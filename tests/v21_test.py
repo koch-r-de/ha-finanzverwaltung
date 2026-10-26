@@ -72,22 +72,14 @@ with TestClient(app) as c:
     pruef("Bilder: kein Zugriff außerhalb des Bilderordners",
           c.get("/api/hilfe/bilder/..%2Fhilfe.md").status_code == 404 and c.get("/api/hilfe/bilder/fehlt.png").status_code == 404)
 
-    # Feiertage: komplett neu, alte Jahre bleiben, veraltete Einträge verschwinden
+    # Feiertage: seit 2.6 keine Tabelle mehr, „Neu berechnen“ entfällt (siehe v26_test.py)
     con = sqlite3.connect(os.path.join(ziel, "finanzdaten.db"))
-    con.execute("INSERT INTO feiertage (datum, name) VALUES ('2026-07-07', 'Kein Feiertag')")
-    con.execute("INSERT OR IGNORE INTO feiertage (datum, name) VALUES ('2024-12-25', '1. Weihnachtstag')")
-    con.commit()
-    anz = ok(c.post("/api/admin/feiertage/aktualisieren")).json()["anzahl"]
-    rows = {r[0] for r in con.execute("SELECT datum FROM feiertage")}
-    pruef("Feiertage: „Neu berechnen“ entfernt veraltete Einträge", "2026-07-07" not in rows)
-    pruef("Feiertage: vergangene Jahre bleiben (ab ältestem Jahr neu berechnet)", "2024-12-25" in rows and "2024-04-01" in rows
-          and anz == len(rows), (anz, len(rows)))
-    pruef("Feiertage: 30 Jahre voraus", f"{date.today().year + 30}-12-26" in rows)
-    con.execute("INSERT INTO feiertage (datum, name) VALUES ('2026-07-08', 'Kein Feiertag')"); con.commit()
+    pruef("Feiertage: Tabelle feiertage entfernt (seit 2.6)",
+          not con.execute("SELECT 1 FROM sqlite_master WHERE name = 'feiertage'").fetchone())
+    pruef("Feiertage: Endpunkt „Neu berechnen“ entfällt (seit 2.6)",
+          c.post("/api/admin/feiertage/aktualisieren").status_code in (404, 405))
 
 with TestClient(app) as c:
-    con = sqlite3.connect(os.path.join(ziel, "finanzdaten.db"))
-    pruef("Feiertage: Programmstart berechnet neu", not con.execute("SELECT 1 FROM feiertage WHERE datum='2026-07-08'").fetchone())
     # Befund J: Nachholen eines Vorjahres-Termins nach Neujahr verschiebt auf den Werktag davor
     konten = ok(c.get("/api/konten")).json(); kat = {k["name"]: k["id"] for k in ok(c.get("/api/kategorien")).json()}
     v = ok(c.post("/api/wiederkehrend", json={"konto_id": konten[0]["id"], "betrag": 33, "kategorie_id": kat["Lebensmittel/Verpflegung"],

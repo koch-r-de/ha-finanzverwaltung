@@ -59,6 +59,10 @@ with sync_playwright() as p:
     pruef("Erfolg: Backup des vorherigen Stands genannt, Anpassungen gelistet",
           "Wiederhergestellt" in inhalt and "vorherige Stand" in inhalt and "Darlehens-Zinsen" in inhalt, inhalt[:400])
     page.click("#wh-neu-laden"); page.wait_for_timeout(2000)
+    # Seit 2.6: die eingespielte Datenbank ist von 2.1, also ohne Bundesland
+    pruef("Nach Wiederherstellen einer alten Datenbank: Bundesland-Abfrage mit NRW vorbelegt",
+          page.is_visible("#bundesland-dialog") and page.input_value("#bundesland-auswahl") == "NW")
+    page.click('#form-bundesland button[type="submit"]'); page.wait_for_timeout(600)
     nachher = page.evaluate("fetch('api/konten').then(r => r.json())")
     pruef("Nach „Seite neu laden“: Daten der Datei aktiv",
           page.evaluate("fetch('api/admin/wiederherstellen/backup', {method:'POST'}).then(r => r.status)") == 422

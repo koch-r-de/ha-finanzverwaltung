@@ -20,6 +20,8 @@
   }
   .sb-feld { margin-bottom: 12px; }
   .sb-feld label { font-size: 12px; margin-bottom: 5px; }
+  .sb-feiertag { display: block; margin-top: 4px; font-size: 12px; color: #6a4f1d; }
+  .sb-feiertag[hidden] { display: none; }
   .sb-feld input, .sb-feld select { padding: 11px 10px; font-size: 16px; }
   .sb-betrag input { font-size: 24px; font-family: var(--schrift-anzeige); text-align: right; }
   .sb-rechnung { font-size: 12px; color: var(--tinte-45); text-align: right; min-height: 16px; margin-top: 3px; }
@@ -84,6 +86,7 @@
       <div class="sb-feld">
         <label>Datum</label>
         <input type="date" name="datum" id="sb-datum-feld" required autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
+        <small class="sb-feiertag" id="sb-feiertag" hidden></small>
       </div>
       <div class="sb-feld" id="sb-zielkonto-feld" style="display:none">
         <label>Zielkonto</label>
@@ -186,6 +189,7 @@ async function laden() {
   const jetzt = new Date();
   const heute = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, "0")}-${String(jetzt.getDate()).padStart(2, "0")}`;
   document.getElementById("sb-datum-feld").value = heute;
+  sbFeiertagPruefen();
   document.getElementById("sb-datum").textContent =
     new Date().toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
 
@@ -238,6 +242,31 @@ function sbSparzieleFiltern() {
 }
 document.getElementById("sb-konto").addEventListener("change", sbSparzieleFiltern);
 document.getElementById("sb-zielkonto").addEventListener("change", sbSparzieleFiltern);
+
+// ─── Feiertagshinweis (seit v2.6, nur Hinweis) ────────────────────
+// Feiertage der in der App gewählten Region, jahrweise vom Server.
+const SB_FEIERTAGE = new Map();
+async function sbFeiertagPruefen() {
+  const feld = document.getElementById("sb-datum-feld");
+  const ziel = document.getElementById("sb-feiertag");
+  const wert = feld.value;
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(wert);
+  let info = null;
+  if (m) {
+    const jahr = Number(m[1]);
+    if (!SB_FEIERTAGE.has(jahr)) {
+      try {
+        const r = await api(`/feiertage?von_jahr=${jahr}&bis_jahr=${jahr}`);
+        SB_FEIERTAGE.set(jahr, new Map(r.tage.map((t) => [t.datum, t])));
+      } catch { SB_FEIERTAGE.set(jahr, new Map()); }
+    }
+    info = SB_FEIERTAGE.get(jahr).get(wert) || null;
+  }
+  if (feld.value !== wert) return;
+  ziel.textContent = info ? info.text : "";
+  ziel.hidden = !info;
+}
+["input", "change"].forEach((art) => document.getElementById("sb-datum-feld").addEventListener(art, sbFeiertagPruefen));
 
 // ─── Speichern ────────────────────────────────────────────────────
 async function speichern(weiter) {

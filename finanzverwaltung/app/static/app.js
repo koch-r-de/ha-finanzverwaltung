@@ -37,6 +37,86 @@ function heuteISO() {
   return datumISO(new Date());
 }
 
+// ─── Feiertage (seit v2.6) ────────────────────────────────────────
+// Die Regeln stehen nur im Server (feiertage.py). Der Browser lädt die
+// Feiertage der gewählten Region jahrweise und prüft Eingaben selbst.
+// Nur Hinweis: nichts wird gesperrt oder übersprungen.
+const FEIERTAGE_ANFRAGEN = new Map();   // Jahr -> Promise
+const FEIERTAGE_GELADEN = new Map();    // Jahr -> Map(ISO-Datum -> {feiertag, bankfeiertag, text})
+
+function feiertageJahr(jahr) {
+  if (!FEIERTAGE_ANFRAGEN.has(jahr)) {
+    FEIERTAGE_ANFRAGEN.set(jahr, api(`/feiertage?von_jahr=${jahr}&bis_jahr=${jahr}`)
+      .then((r) => { const m = new Map(r.tage.map((t) => [t.datum, t])); FEIERTAGE_GELADEN.set(jahr, m); return m; })
+      .catch(() => { FEIERTAGE_ANFRAGEN.delete(jahr); return new Map(); }));
+  }
+  return FEIERTAGE_ANFRAGEN.get(jahr);
+}
+
+function feiertagJahrAus(iso) {
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(String(iso ?? ""));
+  const jahr = m ? Number(m[1]) : NaN;
+  return jahr >= 1900 && jahr <= 9998 ? jahr : null;
+}
+
+async function feiertageVorladen(isoListe) {
+  const jahre = new Set(isoListe.map(feiertagJahrAus).filter((j) => j !== null));
+  await Promise.all([...jahre].map(feiertageJahr));
+}
+
+function feiertagInfo(iso) {
+  const jahr = feiertagJahrAus(iso);
+  return (jahr && FEIERTAGE_GELADEN.get(jahr)?.get(iso)) || null;
+}
+
+function feiertageZuruecksetzen() {
+  FEIERTAGE_ANFRAGEN.clear();
+  FEIERTAGE_GELADEN.clear();
+}
+
+// Symbol in Listen (Buchungsliste mit Vorschau)
+function feiertagMarke(iso) {
+  const info = feiertagInfo(iso);
+  return info ? ` <span class="feiertag-marke" title="${resetEsc(info.text)}" aria-label="${resetEsc(info.text)}">F</span>` : "";
+}
+
+// Hinweis direkt unter einem Datumsfeld mit Attribut data-feiertag
+async function feiertagHinweisZeigen(feld) {
+  let ziel = feld.parentElement.querySelector(":scope > .feiertag-hinweis");
+  if (!ziel) {
+    ziel = document.createElement("small");
+    ziel.className = "feiertag-hinweis";
+    ziel.hidden = true;
+    feld.insertAdjacentElement("afterend", ziel);
+  }
+  const wert = feld.value;
+  const jahr = feiertagJahrAus(wert);
+  if (jahr) await feiertageJahr(jahr);
+  if (feld.value !== wert) return;   // inzwischen weiter getippt
+  const info = jahr ? feiertagInfo(wert) : null;
+  ziel.textContent = info ? info.text : "";
+  ziel.hidden = !info;
+}
+
+function feiertagHinweiseAktualisieren(wurzel = document) {
+  wurzel.querySelectorAll("input[data-feiertag]").forEach(feiertagHinweisZeigen);
+}
+
+["input", "change"].forEach((art) => document.addEventListener(art, (e) => {
+  if (e.target.matches && e.target.matches("input[data-feiertag]")) feiertagHinweisZeigen(e.target);
+}));
+// form.reset() setzt Werte ohne input-Ereignis zurück
+document.addEventListener("reset", (e) => setTimeout(() => feiertagHinweiseAktualisieren(e.target), 0));
+
+// Hinweise zu Serien nach dem Speichern (Vorlagen, Darlehen, Altersvorsorge)
+function serienHinweiseZeigen(elementId, liste) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  if (!liste || !liste.length) { el.hidden = true; el.innerHTML = ""; return; }
+  el.innerHTML = `${hinweisHtml("feiertage.serie")}<ul>${liste.map((h) => `<li>${resetEsc(h.text)}</li>`).join("")}</ul>`;
+  el.hidden = false;
+}
+
 // ─── Diagramm-Grundstil (seit v2.3) ───────────────────────────────
 // Gilt für alle Diagramme der App: Achse mit „Okt 26“ statt ISO-Datum und
 // ohne Schräglage, nur waagrechte blasse Rasterlinien, Legende oben rechts
@@ -754,6 +834,7 @@ function datumMitHeuteVorbelegen(selektor) {
   const leer = !feld.value || feld.value === feld.defaultValue;
   feld.defaultValue = heuteISO();
   if (leer) feld.value = feld.defaultValue;
+  feiertagHinweisZeigen(feld);
 }
 
 function saldoKorrekturDatumVorbelegen() {
@@ -817,6 +898,7 @@ async function renderBuchungenTabelle() {
   if (document.getElementById("buchungen-inflation").checked) params.set("inflation", "true");
   const liste = await api(`/buchungen?${params.toString()}`);
   const sortiert = liste.slice().sort((a, b) => (a.datum < b.datum ? 1 : -1));
+  await feiertageVorladen(sortiert.map((b) => b.datum));
 
   document.getElementById("buchungen-tabelle").innerHTML = sortiert.map((b) => {
     const konto = KONTEN.find((k) => k.id === b.konto_id);
@@ -827,7 +909,7 @@ async function renderBuchungenTabelle() {
       : b.wiederkehrend_id ? "Vorlage" : b.ziel_altersvorsorge_id ? "Altersvorsorge"
       : b.ziel_darlehen_id ? "Darlehen" : "manuell";
     return `<tr${b.virtuell ? ' style="opacity:.72"' : ""}>
-      <td>${b.datum}</td>
+      <td>${b.datum}${feiertagMarke(b.datum)}</td>
       <td>${kontoText}</td>
       <td>${kategoriePfad(b.kategorie_id)}</td>
       <td><span class="abzeichen ${b.typ.toLowerCase()}">${b.typ}</span></td>
@@ -854,6 +936,7 @@ async function buchungBearbeiten(id) {
   form.konto_id.value = b.konto_id;
   form.typ.value = b.typ;
   form.datum.value = b.datum;
+  feiertagHinweisZeigen(form.datum);
   form.betrag.value = Math.abs(b.betrag);
   if (b.kategorie_id) form.kategorie_id.value = b.kategorie_id;
   form.beschreibung.value = b.beschreibung || "";
@@ -1131,14 +1214,17 @@ document.getElementById("form-wiederkehrend").addEventListener("submit", async (
     person_id: d.person_id ? Number(d.person_id) : null,
   });
   const id = e.target.dataset.bearbeitetId;
+  serienHinweiseZeigen("wk-feiertage", null);
+  let antwort;
   try {
-    if (id) await api(`/wiederkehrend/${id}`, { method: "PUT", body: koerper });
-    else await api("/wiederkehrend", { method: "POST", body: koerper });
+    if (id) antwort = await api(`/wiederkehrend/${id}`, { method: "PUT", body: koerper });
+    else antwort = await api("/wiederkehrend", { method: "POST", body: koerper });
   } catch (err) {
     meldung.textContent = apiFehlerText(err);
     return;
   }
   wiederkehrendFormularZuruecksetzen();
+  serienHinweiseZeigen("wk-feiertage", antwort && antwort.feiertagshinweise);
   await renderWiederkehrendTabelle();
 });
 
@@ -1155,14 +1241,37 @@ async function ladePlanAbschnitt() {
       <td><span class="abzeichen ${p.status === "umgewandelt" ? "ist" : "plan"}">${p.status}</span></td>
       <td class="reihen-werkzeuge">
         ${p.status === "umgewandelt" && p.buchung_typ === "Ist" ? `
-          <button class="knopf sekundaer klein" onclick="planAnpassen(${p.buchung_id})">Datum ändern</button>
+          <button class="knopf sekundaer klein" onclick="planAnpassen(${p.buchung_id}, '${p.buchung_datum ?? ""}')">Datum ändern</button>
           <button class="knopf gefahr klein" onclick="planLoeschen(${p.buchung_id})">Verwerfen</button>` : ""}
       </td>
     </tr>`).join("") || `<tr><td colspan="6" class="leer">Noch keine Umwandlungen protokolliert</td></tr>`;
 }
 
-async function planAnpassen(buchungId) {
-  const neu = prompt("Neues Datum (YYYY-MM-DD):");
+// Kleiner Dialog mit Datumsfeld (seit v2.6 statt prompt(), damit der
+// Feiertagshinweis unter dem Feld erscheinen kann). Liefert das Datum oder null.
+function datumDialog(titel, vorbelegung) {
+  const dialog = document.getElementById("datum-dialog");
+  const form = document.getElementById("form-datum-dialog");
+  document.getElementById("datum-dialog-titel").textContent = titel;
+  form.reset();
+  form.datum.value = vorbelegung || heuteISO();
+  feiertagHinweisZeigen(form.datum);
+  return new Promise((fertig) => {
+    const abbrechen = document.getElementById("datum-dialog-abbrechen");
+    const aufraeumen = (wert) => {
+      form.onsubmit = null; abbrechen.onclick = null; dialog.oncancel = null;
+      dialog.close();
+      fertig(wert);
+    };
+    form.onsubmit = (e) => { e.preventDefault(); aufraeumen(form.datum.value || null); };
+    abbrechen.onclick = () => aufraeumen(null);
+    dialog.oncancel = (e) => { e.preventDefault(); aufraeumen(null); };
+    dialog.showModal();
+  });
+}
+
+async function planAnpassen(buchungId, bisherigesDatum) {
+  const neu = await datumDialog("Datum ändern", bisherigesDatum);
   if (!neu) return;
   await api(`/plan-buchungen/${buchungId}/ablehnen-anpassen?neues_datum=${neu}`, { method: "POST" });
   await ladePlanAbschnitt();
@@ -1272,21 +1381,16 @@ document.getElementById("form-darlehen").addEventListener("submit", async (e) =>
     darlehenssumme: d.darlehenssumme !== "" ? Number(d.darlehenssumme) : null,
   });
   const id = e.target.dataset.bearbeitetId;
-  if (id) {
-    await api(`/darlehen/${id}`, { method: "PUT", body: koerper });
-  } else {
-    const antwort = await api("/darlehen", { method: "POST", body: koerper });
-    const betragText = prompt("Darlehen angelegt. Erste Auszahlung – Betrag in €, leer zum Überspringen:");
-    if (betragText) {
-      const auszahlungsDatum = prompt("Datum der Auszahlung (YYYY-MM-DD):", d.zinsbeginn);
-      const antwort2 = await api(`/darlehen/${antwort.id}/auszahlungen`, { method: "POST", body: JSON.stringify({
-        datum: auszahlungsDatum, betrag: Number(betragText),
-      })});
-      if (antwort2.hinweis) alert(antwort2.hinweis);
-    }
-  }
+  serienHinweiseZeigen("darlehen-feiertage", null);
+  const antwort = id
+    ? await api(`/darlehen/${id}`, { method: "PUT", body: koerper })
+    : await api("/darlehen", { method: "POST", body: koerper });
   darlehenFormularZuruecksetzen();
+  serienHinweiseZeigen("darlehen-feiertage", antwort && antwort.feiertagshinweise);
   await renderDarlehenListe();
+  // Seit v2.6 erste Auszahlung im Dialog (mit Feiertagshinweis) statt prompt();
+  // „Abbrechen“ überspringt sie wie früher die leere Eingabe.
+  if (!id) darlehenDialog("auszahlung", antwort.id, { datum: d.zinsbeginn, erste: true });
 });
 
 async function zeigeDarlehenDetail(darlehenId, bezeichnung) {
@@ -1319,7 +1423,7 @@ async function zeigeDarlehenDetail(darlehenId, bezeichnung) {
 
 // ─── Dialog: Auszahlung / Sondertilgung (seit v1.9, ersetzt das Formular
 // in der Detailansicht) ───────────────────────────────────────────────
-function darlehenDialog(art, id) {
+function darlehenDialog(art, id, vorgaben = {}) {
   const d = DARLEHEN_LISTE.find((x) => x.id === id);
   if (!d) return;
   const konto = KONTEN.find((k) => k.id === d.zahlungskonto_id);
@@ -1330,14 +1434,14 @@ function darlehenDialog(art, id) {
     : `<div><label>Konto</label><select name="konto_id" required>${KONTEN.map((k) =>
         `<option value="${k.id}" ${k.id === d.zahlungskonto_id ? "selected" : ""}>${resetEsc(k.name)}</option>`).join("")}</select></div>`;
   document.getElementById("darlehen-dialog-inhalt").innerHTML = `
-    <h2>${istAuszahlung ? "Auszahlung" : "Sondertilgung"} · ${resetEsc(d.bezeichnung)}</h2>
+    <h2>${vorgaben.erste ? "Erste Auszahlung" : istAuszahlung ? "Auszahlung" : "Sondertilgung"} · ${resetEsc(d.bezeichnung)}</h2>
     <form class="formular" id="form-darlehen-dialog">
       ${kontoFeld}
-      <div><label>Datum</label><input type="date" name="datum" value="${heuteISO()}" required></div>
+      <div><label>Datum</label><input type="date" name="datum" value="${vorgaben.datum || heuteISO()}" required data-feiertag></div>
       <div><label>Betrag (€)</label><input type="number" step="0.01" min="0.01" name="betrag" required></div>
       <div class="warnung" id="darlehen-dialog-meldung" hidden></div>
       <div class="reihen-werkzeuge reset-knoepfe">
-        <button type="button" class="knopf sekundaer" id="darlehen-dialog-abbrechen">Abbrechen</button>
+        <button type="button" class="knopf sekundaer" id="darlehen-dialog-abbrechen">${vorgaben.erste ? "Überspringen" : "Abbrechen"}</button>
         <button type="submit" class="knopf" id="darlehen-dialog-buchen">Buchen</button>
       </div>
     </form>`;
@@ -1374,6 +1478,7 @@ function darlehenDialog(art, id) {
       knopf.disabled = false;
     }
   });
+  feiertagHinweiseAktualisieren(dialog);
   dialog.showModal();
 }
 
@@ -1567,6 +1672,7 @@ document.getElementById("form-altersvorsorge").addEventListener("submit", async 
     auszahlung_inflationsflag: !!d.auszahlung_inflationsflag,
   });
   const id = e.target.dataset.bearbeitetId;
+  let antwort;
   if (id) {
     // Rentenbeginn verschoben (seit v2.0): Bestätigungsdialog, danach werden
     // automatisch erzeugte Buchungen in der falschen Phase gelöscht.
@@ -1585,11 +1691,14 @@ document.getElementById("form-altersvorsorge").addEventListener("submit", async 
         bereinigen = p.loeschen > 0;
       }
     }
-    await api(`/altersvorsorge/${id}${bereinigen ? "?phasen_bereinigen=true" : ""}`, { method: "PUT", body: koerper });
+    serienHinweiseZeigen("av-feiertage", null);
+    antwort = await api(`/altersvorsorge/${id}${bereinigen ? "?phasen_bereinigen=true" : ""}`, { method: "PUT", body: koerper });
   } else {
-    await api("/altersvorsorge", { method: "POST", body: koerper });
+    serienHinweiseZeigen("av-feiertage", null);
+    antwort = await api("/altersvorsorge", { method: "POST", body: koerper });
   }
   altersvorsorgeFormularZuruecksetzen();
+  serienHinweiseZeigen("av-feiertage", antwort && antwort.feiertagshinweise);
   await renderAltersvorsorgeTabelle();
   await ladeKonten();
 });
@@ -2221,6 +2330,7 @@ async function ladeAdminAbschnitt() {
   renderPersonenListe();
   await renderRegeln();
   await renderSiri();
+  await feiertageAdminLaden().catch(() => {});
   await renderBackups();
   await renderReihenfolgeEditor();
   await ladeZuruecksetzen();
@@ -2843,11 +2953,15 @@ function importVorschauAnzeigen(v, uebernommen = false) {
       </tbody></table></details>` : "";
   const hinweise = (v.hinweise || []).length
     ? `<div class="warnung">${v.hinweise.map(resetEsc).join("<br>")}</div>` : "";
+  // Seit v2.6: Feiertagshinweise zu neuen oder geänderten Zeilen
+  const feiertage = (v.feiertagshinweise || []).length
+    ? `<div class="feiertag-serie">${hinweisHtml("feiertage.import")}<ul>${v.feiertagshinweise.map((h) =>
+        `<li>${resetEsc(h.sheet)}, Zeile ${h.zeile} (${resetEsc(String(h.titel || ""))}): ${resetEsc(h.text)}</li>`).join("")}</ul></div>` : "";
   const knopf = !uebernommen && v.token
     ? `<div class="reihen-werkzeuge" style="margin-top:10px">
          <button class="knopf" id="import-uebernehmen">Übernehmen</button>
          <button class="knopf sekundaer" id="import-verwerfen">Verwerfen</button></div>` : "";
-  zielDiv.innerHTML = kopf + tabelle + hinweise + fehlerListe + detailListe + knopf;
+  zielDiv.innerHTML = kopf + tabelle + hinweise + feiertage + fehlerListe + detailListe + knopf;
   IMPORT_TOKEN = uebernommen ? null : v.token;
   document.getElementById("import-uebernehmen")?.addEventListener("click", importUebernehmen);
   document.getElementById("import-verwerfen")?.addEventListener("click", () => {
@@ -2982,10 +3096,61 @@ document.getElementById("admin-vorzeichen-korrigieren").addEventListener("click"
   document.getElementById("admin-vorzeichen-pruefen").click();
 });
 
-document.getElementById("feiertage-aktualisieren").addEventListener("click", async () => {
-  const antwort = await api("/admin/feiertage/aktualisieren", { method: "POST" });
-  document.getElementById("feiertage-status").textContent = `${antwort.anzahl} Feiertage aktuell hinterlegt.`;
+// ─── Bundesland für Feiertage (seit v2.6) ─────────────────────────
+// Pflichtangabe beim ersten Start: Dialog ohne Abbrechen. Bestehende
+// Installationen bekommen NRW als Vorschlag, der bestätigt werden muss.
+
+function regionenOptionen(regionen, auswahl, mitLeer) {
+  return (mitLeer ? '<option value="">– bitte wählen –</option>' : "")
+    + regionen.map((r) => `<option value="${r.kuerzel}" ${r.kuerzel === auswahl ? "selected" : ""}>${resetEsc(r.name)}</option>`).join("");
+}
+
+async function feiertageAdminLaden() {
+  const r = await api("/feiertage/regionen");
+  document.getElementById("feiertage-region").innerHTML = regionenOptionen(r.regionen, r.gewaehlt, !r.gewaehlt);
+  const jahr = new Date().getFullYear();
+  const liste = await api(`/feiertage?von_jahr=${jahr}&bis_jahr=${jahr}`);
+  const tage = liste.tage.filter((t) => t.feiertag);
+  document.getElementById("feiertage-liste").innerHTML = tage.length
+    ? `<table><thead><tr><th>Datum ${jahr}</th><th>Feiertag</th></tr></thead><tbody>${tage.map((t) =>
+        `<tr><td>${t.datum}</td><td>${resetEsc(t.feiertag)}</td></tr>`).join("")}</tbody></table>`
+    : "";
+}
+
+async function feiertagsregionSpeichern(kuerzel) {
+  const antwort = await api("/feiertage/region", { method: "PUT", body: JSON.stringify({ kuerzel }) });
+  feiertageZuruecksetzen();
+  feiertagHinweiseAktualisieren();
+  return antwort;
+}
+
+document.getElementById("form-feiertage-region").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const status = document.getElementById("feiertage-status");
+  try {
+    const antwort = await feiertagsregionSpeichern(e.target.kuerzel.value);
+    status.textContent = `Gespeichert: ${antwort.name}`;
+    await feiertageAdminLaden();
+  } catch (err) {
+    status.textContent = apiFehlerText(err);
+  }
 });
+
+async function bundeslandPruefen() {
+  const r = await api("/feiertage/regionen");
+  if (r.gewaehlt) return;
+  const dialog = document.getElementById("bundesland-dialog");
+  document.getElementById("bundesland-auswahl").innerHTML = regionenOptionen(r.regionen, r.vorschlag, !r.vorschlag);
+  dialog.addEventListener("cancel", (e) => e.preventDefault());   // Pflichtangabe
+  document.getElementById("form-bundesland").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!e.target.kuerzel.value) return;
+    await feiertagsregionSpeichern(e.target.kuerzel.value);
+    dialog.close();
+    if (document.getElementById("abschnitt-buchungen")?.classList.contains("aktiv")) await renderBuchungenTabelle();
+  });
+  dialog.showModal();
+}
 
 
 // ─── Suche ────────────────────────────────────────────────────────
@@ -3769,6 +3934,7 @@ document.getElementById("hilfe-suche").addEventListener("input", (e) => {
   }
   await renderNavigation();
   await hilfeHinweiseLaden();
+  await bundeslandPruefen().catch(() => {});
   await ladeKategorien();
   await ladePersonen();
   await ladeStart();

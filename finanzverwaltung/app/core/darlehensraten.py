@@ -140,7 +140,8 @@ def anstehende_raten(conn, feiertage: dict, ab: date, bis: date, darlehen_id: Op
                 if kategorie_id is None or betrag == 0:
                     continue
                 ergebnis.append({
-                    "datum": termin.isoformat(), "betrag": betrag, "konto_id": row["zahlungskonto_id"],
+                    "datum": termin.isoformat(), "termin": zeile.datum.isoformat(),
+                    "betrag": betrag, "konto_id": row["zahlungskonto_id"],
                     "kategorie_id": kategorie_id, "beschreibung": f"{darlehen.bezeichnung} - {bezeichnung}",
                     "ziel_darlehen_id": row["id"], "typ": "Wiederkehrend", "virtuell": True,
                 })

@@ -11,6 +11,7 @@ Protokolle in tests/ausgabe/<reihe>.txt. Rückgabewert 1, wenn etwas fehlschläg
 """
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -32,6 +33,7 @@ FACHLICH = [
     ("v22", "v22_test.py", "v20", []),
     ("v23", "v23_test.py", "ausgabe:v2", []),
     ("v24", "v24_test.py", "v191", [str(DATEN / "v21")]),
+    ("v26", "v26_test.py", "v21", []),
 ]
 OBERFLAECHE = [
     ("ui", "ui_test.py", "v191", []),
@@ -39,7 +41,11 @@ OBERFLAECHE = [
     ("ui21", "ui21_test.py", "ausgabe:uibasis", []),
     ("ui23", "ui23_test.py", "ausgabe:uibasis", []),
     ("ui24", "ui24_test.py", "ausgabe:uibasis", [str(DATEN / "v21" / "finanzdaten.db")]),
+    ("ui26", "ui26_test.py", "v191", []),
 ]
+
+# Reihen, die die Bundesland-Abfrage selbst prüfen
+OHNE_VORBELEGUNG = {"ui26"}
 
 
 def quelle_pfad(quelle: str) -> Path:
@@ -51,6 +57,18 @@ def protokoll(reihe: str, ergebnis: subprocess.CompletedProcess) -> str:
     (AUSGABE / f"{reihe}.txt").write_text(text, encoding="utf-8")
     zeilen = [z for z in text.splitlines() if "bestanden" in z and "/" in z]
     return zeilen[-1] if zeilen else f"abgebrochen (siehe tests/ausgabe/{reihe}.txt)"
+
+
+def bundesland_vorbelegen(datenordner: Path) -> None:
+    """Seit 2.6 fragt die Oberfläche beim ersten Start nach dem Bundesland
+    (Pflichtdialog). Die Oberflächentests der Vorversionen arbeiten mit
+    gewähltem NRW, damit der Dialog sie nicht blockiert. Die Abfrage selbst
+    prüft ui26_test.py."""
+    con = sqlite3.connect(datenordner / "finanzdaten.db")
+    con.execute("CREATE TABLE IF NOT EXISTS einstellungen (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    con.execute("INSERT OR REPLACE INTO einstellungen (key, value) VALUES ('bundesland', 'NW')")
+    con.commit()
+    con.close()
 
 
 def server_starten(datenordner: Path) -> subprocess.Popen:
@@ -83,6 +101,8 @@ def main() -> int:
         for reihe, skript, quelle, extra in OBERFLAECHE:
             ordner = AUSGABE / f"{reihe}_daten"
             shutil.copytree(quelle_pfad(quelle), ordner)
+            if reihe not in OHNE_VORBELEGUNG:
+                bundesland_vorbelegen(ordner)
             server = server_starten(ordner)
             try:
                 lauf = subprocess.run([sys.executable, str(TESTS / skript), *extra],

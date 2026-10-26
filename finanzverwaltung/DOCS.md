@@ -138,6 +138,138 @@ neuen Darlehen); die Karte zeigt daraus den noch nicht ausgezahlten Rest.
 Bestehende Darlehen bleiben ohne Summe, bis sie über "Ändern" nachgetragen
 wird.
 
+## Neu in Version 2.6
+
+**Feiertagskalender wählbar:** Beim ersten Start fragt das Programm nach dem
+Bundesland (Pflichtangabe, das Fenster lässt sich nicht wegklicken). Danach
+ist es unter „Administration“, Reiter „Stammdaten“, Block „Feiertage“
+änderbar, dort steht auch die Liste der Feiertage des laufenden Jahres.
+Regionale Sonderfälle sind eigene Einträge, benannt nach dem Feiertag:
+„Bayern – mit Mariä Himmelfahrt“, „Bayern – ohne Mariä Himmelfahrt“,
+„Bayern – Stadt Augsburg“ (Friedensfest), „Sachsen – mit Fronleichnam“,
+„Thüringen – mit Fronleichnam“. Gemeindegenaue Regeln bildet nur diese
+Auswahl ab, es gibt keine Gemeindeliste. Schulferien und Gedenktage werden
+nicht markiert.
+
+**Nur markieren, nichts sperren:** Ein Hinweis erscheint unter dem Datumsfeld
+im Buchungsformular, bei der Saldo-Korrektur, im neuen Dialog „Datum ändern“
+des Plan-Protokolls, bei Auszahlung und Sondertilgung eines Darlehens und in
+der Schnellbuchung. Nach dem Speichern einer Vorlage, eines Darlehens oder
+einer Altersvorsorge nennt das Programm die Termine der nächsten 12 Monate,
+die auf einen Feiertag fallen (Entscheidung: nach dem Speichern statt
+Probelauf beim Ausfüllen, weil die Termine nur der Server rechnet). Die
+Import-Vorschau nennt neue oder geänderte Zeilen an Feiertagen. Die
+Buchungsliste markiert Feiertage mit einem kleinen „F“ (mit Namen beim
+Darüberfahren), auch bei anstehenden Terminen. Auch Feiertage an einem
+Sonntag werden markiert. Stammdaten, Fristen und Zeiträume (Kontoeröffnung,
+Zinsbindung, Budget-Zeiträume, Filter, Export, „Ist bis“) bekommen keinen
+Hinweis.
+
+**Siri:** Die Antwort von `/api/siri/buchung` hat das zusätzliche Feld
+`feiertagshinweis` (Text oder `null`). `meldung` bleibt unverändert, bestehende
+Kurzbefehle sprechen also dasselbe wie bisher.
+
+**Verschiebung fälliger Termine nach dem Bankkalender (Verhaltensänderung):**
+Bis 2.5 verschob das Programm Termine aus Vorlagen, Darlehen und
+Altersvorsorge an jedem NRW-Feiertag auf den Werktag davor. Seit 2.6
+verschiebt es nur noch an Wochenenden und an den TARGET-Schließtagen der EZB
+(Neujahr, Karfreitag, Ostermontag, 1. Mai, 25. und 26. Dezember, gültig ab
+2002 laut Pressemitteilung der EZB vom 14.12.2000). Begründung: Ob eine
+Zahlung verschoben wird, hängt vom Geschäftstag der Bank ab (§ 675n Abs. 1
+BGB), nicht vom Wohnort, und SEPA-Zahlungen laufen über den TARGET-Kalender.
+Das Bundesland ändert damit kein einziges Buchungs- oder Prognosedatum.
+Folge für NRW: Termine an Fronleichnam, Christi Himmelfahrt, Pfingstmontag,
+3. Oktober und Allerheiligen werden ab dem Update nicht mehr vorgezogen.
+Bereits gebuchte Buchungen bleiben, wie sie sind. Ob die eigene Bank an
+regionalen Feiertagen bucht, ist von Haus zu Haus verschieden (ungeprüft).
+Unverändert gilt: verschoben wird auf den Werktag davor, auch wenn
+Lastschriften in der Praxis meist am nächsten Geschäftstag belastet werden.
+
+**Übergang ohne doppelte Termine:** Die Generatoren betrachten nur Termine,
+deren ursprüngliches Datum erreicht ist, und setzen die Erzeugungsmarke
+`erzeugt_bis` vorher auf heute. Ein Termin, den 2.5 nach NRW vorgezogen
+gebucht hat (zum Beispiel am 01.11.2027 für Allerheiligen gebucht auf den
+29.10.), liegt deshalb immer vor `erzeugt_bis` und wird nach dem Update
+übersprungen. Ein eigener Abgleich mit dem alten NRW-Datum ist nicht nötig.
+`tests/upgrade_test.py` weist das mit dem echten Code von 2.5 nach.
+
+**Regeltabelle:** Feiertage stehen als eine Tabelle im Code
+(`app/core/feiertage.py`, `REGELN`), eine Zeile je Feiertag mit Name, Regel
+(festes Datum `MM-TT`, Abstand zum Ostersonntag oder Sonderregel Buß- und
+Bettag = Mittwoch vor dem 23. November), Regionen, Gültigkeit [von, bis]
+(offenes Ende 9999, einmalige Feiertage mit von = bis), Rechtsgrundlage und
+Prüfstatus. Ostern rechnet die Gaußsche Osterformel ohne fremde Bibliothek.
+„Von 1990“ heißt: gilt mindestens seit 1990, Früheres ist nicht abgebildet.
+Ändert ein Land sein Gesetz, genügt eine neue Zeile und eine neue Version.
+Die frühere Tabelle `feiertage` in SQLite (bei jedem Start gelöscht und neu
+gefüllt) und der Knopf „Neu berechnen“ entfallen.
+
+Rechtsgrundlagen (Recherche Oktober 2026, Landesgesetze überwiegend über
+umwelt-online eingesehen, Bayern, NRW und Sachsen über die amtlichen
+Portale):
+
+| Land | Gesetz |
+| --- | --- |
+| BW | Feiertagsgesetz vom 08.05.1995, § 1 |
+| BY | Feiertagsgesetz vom 21.05.1980, Art. 1 (Mariä Himmelfahrt Abs. 1 Nr. 2, Friedensfest Augsburg Abs. 2) |
+| BE | Gesetz über die Sonn- und Feiertage vom 28.10.1954, § 1 (Frauentag und 8. Mai 2020: Änderungsgesetz vom 30.01.2019, 17. Juni 2028: § 1 Abs. 1 Nr. 11) |
+| BB | Feiertagsgesetz vom 21.03.1991, § 2 (mit Ostersonntag und Pfingstsonntag) |
+| HB | Gesetz über die Sonn- und Feiertage vom 12.11.1954, § 2 |
+| HH | Feiertagsgesetz vom 16.10.1953, § 1 |
+| HE | Hessisches Feiertagsgesetz vom 29.12.1971, § 1 |
+| MV | Feiertagsgesetz vom 08.03.2002, § 2 |
+| NI | Niedersächsisches Gesetz über die Feiertage vom 07.03.1995, § 2 |
+| NW | Feiertagsgesetz NRW, § 2 |
+| RP | Landesfeiertagsgesetz vom 15.07.1970, § 2 |
+| SL | Gesetz Nr. 1040 vom 18.02.1976, § 2 |
+| SN | Sächsisches Sonn- und Feiertagsgesetz vom 10.11.1992, § 1, Fronleichnam nach FronleichnamsVO vom 04.05.1993 |
+| ST | Feiertagsgesetz Sachsen-Anhalt vom 25.08.2004, § 2 |
+| SH | Sonn- und Feiertagsgesetz vom 28.06.2004, § 2 |
+| TH | Thüringer Feier- und Gedenktagsgesetz vom 21.12.1994, § 2 (Fronleichnam per Rechtsverordnung nach Abs. 2) |
+
+Als ungeprüft gekennzeichnet: Beginn des Frauentags in MV (2023, nur
+Sekundärquelle), Fundstelle des 8. Mai 2025 in Berlin (Feiertag bestätigt),
+Titel der Thüringer Fronleichnams-Verordnung, Zuordnung von Mariä
+Himmelfahrt zur Stadt Augsburg, Einigungsvertrag Art. 2 Abs. 2 als
+zusätzliche Grundlage des 3. Oktober, die einmaligen Regelungen zum
+Reformationstag 2017, der Buß- und Bettag außerhalb Sachsens bis 1994, der
+Beginn von Heilige Drei Könige in Sachsen-Anhalt und des Reformationstags in
+den ostdeutschen Ländern. Bekannt, aber bewusst nicht markiert: Sachsen-Anhalt
+hat zum 04.05.2026 den 8. Mai und den 17. Juni als Gedenktage eingeführt
+(§ 2a FeiertG LSA), das sind keine Feiertage.
+
+**Migration:** Datenbanken von vor 2.6 erkennt das Programm an der Tabelle
+`feiertage`. Es hinterlegt dann NRW als Vorschlag (bisher fest NRW) und
+entfernt die Tabelle ohne Backup, weil sie nur abgeleitete Werte enthielt.
+Die Abfrage erscheint mit NRW vorbelegt und muss bestätigt werden. Das gilt
+auch nach dem Einspielen eines alten Backups. Neue Einstellungen:
+`bundesland`, `bundesland_vorschlag` (beide nur über
+`/api/feiertage/region`, nicht über die allgemeine Einstellung änderbar).
+Neue Endpunkte: `GET /api/feiertage/regionen`, `PUT /api/feiertage/region`,
+`GET /api/feiertage?von_jahr=&bis_jahr=` (höchstens 60 Jahre).
+
+**Dialoge statt Browser-Abfrage:** „Datum ändern“ im Plan-Protokoll und die
+erste Auszahlung direkt nach dem Anlegen eines Darlehens nutzten
+`prompt()` mit Freitext „YYYY-MM-DD“. Beides sind jetzt Dialoge mit
+Datumsfeld (die erste Auszahlung nutzt den vorhandenen Auszahlungsdialog mit
+„Überspringen“), damit der Feiertagshinweis erscheinen kann.
+
+**Tests:** neue Reihen `v26_test.py` (Ostern, Buß- und Bettag,
+Gültigkeitsintervalle, jeder Sonderfall, Anzahl je Region, Verschiebung,
+Migration, Fehlerfälle der Endpunkte, Serienhinweise, Siri, Import) und
+`ui26_test.py`. `upgrade_test.py` zieht eine Datenbank mit dem Code von 2.5
+hoch und vergleicht nach dem Start mit 2.6 alle Tabellen. Die
+Oberflächenreihen der Vorversionen starten mit gewähltem NRW, sonst würde
+die Pflichtabfrage sie blockieren.
+
+**Befund P (gefunden beim Oberflächentest, besteht seit mindestens 2.5):**
+Das Formular „Neue Buchung“ schickt bei Typ „Ist“ und „Plan“ das Zielkonto
+aus dem verborgenen Auswahlfeld mit, `buchung_anlegen()` speichert es
+ungeprüft. Folgen: Anzeige „A → B“ in der Buchungsliste, Kontofilter und
+Suche zeigen die Buchung zusätzlich beim fremden Konto, der Export füllt die
+Spalte „zielkonto“. Salden und Auswertungen sind nicht betroffen. Behebung
+vorgeschlagen, noch nicht freigegeben.
+
 ## Neu in Version 2.5
 
 **Veröffentlichung auf GitHub:** Das Projekt liegt öffentlich unter

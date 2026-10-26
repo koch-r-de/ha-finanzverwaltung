@@ -2,6 +2,14 @@
 
 Ausführlich zu jeder Version: DOCS.md, Abschnitte „Neu in Version …“.
 
+## 2.6
+
+- Feiertagskalender wählbar: Bundesland beim ersten Start (Pflicht), änderbar in der Administration, regionale Sonderfälle als eigene Einträge.
+- Feiertage werden nur markiert: Hinweis an Datumsfeldern, nach dem Speichern von Vorlagen, Darlehen und Altersvorsorge, in der Import-Vorschau, in der Schnellbuchung und als „F“ in der Buchungsliste. Siri-Antwort mit Feld `feiertagshinweis`.
+- Fällige Termine verschieben nur noch an Wochenenden und Bankfeiertagen (TARGET), nicht mehr an allen NRW-Feiertagen.
+- Feiertage werden berechnet statt gespeichert, Tabelle `feiertage` und „Neu berechnen“ entfallen.
+- „Datum ändern“ im Plan-Protokoll und die erste Auszahlung eines Darlehens als Dialog statt Browser-Abfrage.
+
 ## 2.5
 
 - Veröffentlichung auf GitHub (GPL-3.0), installierbar als Repository in Home Assistant.

@@ -44,6 +44,8 @@ def ok(r):
 def demo_daten_anlegen():
     """Erfundene Beispieldaten, keine echten Personen oder Konten."""
     with TestClient(app) as c:
+        # Seit 2.6 Pflichtangabe, sonst verdeckt die Abfrage alle Bilder
+        ok(c.put("/api/feiertage/region", json={"kuerzel": "NW"}))
         anna = ok(c.post("/api/personen", json={"name": "Anna", "farbe": "#4a7fd6"}))["id"]
         ben = ok(c.post("/api/personen", json={"name": "Ben", "farbe": "#c46210"}))["id"]
         konto = lambda **k: ok(c.post("/api/konten", json=k))["id"]

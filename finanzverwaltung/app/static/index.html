@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Private Finanzverwaltung</title>
-<link rel="stylesheet" href="assets/style.css?v=16">
+<link rel="stylesheet" href="assets/style.css?v=17">
 </head>
 <body>
 
@@ -74,7 +74,7 @@
       <p class="hinweis" data-hinweis="konten.saldo-korrektur"></p>
       <form class="formular" id="form-saldo-korrektur">
         <div><label>Konto</label><select name="konto_id" class="konto-auswahl" required></select></div>
-        <div><label>Datum</label><input type="date" name="datum" required></div>
+        <div><label>Datum</label><input type="date" name="datum" required data-feiertag></div>
         <div><label>Saldo (€)</label><input type="number" step="0.01" name="saldo" required></div>
         <div><label>Kommentar</label><input name="kommentar"></div>
         <div><button class="knopf" type="submit">Korrektur anlegen</button></div>
@@ -94,7 +94,7 @@
           </select>
         </div>
         <div id="ziel-konto-feld" style="display:none"><label>Zielkonto</label><select name="zielkonto_id" class="konto-auswahl"></select></div>
-        <div><label>Datum</label><input type="date" name="datum" required></div>
+        <div><label>Datum</label><input type="date" name="datum" required data-feiertag></div>
         <div><label id="betrag-label">Betrag (€)</label><input type="number" step="0.01" name="betrag" required></div>
         <div id="kategorie-feld"><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" required></select></div>
         <div id="sparziel-feld" style="display:none"><label>Sparziel zuordnen (optional)</label><select name="sparziel_id"><option value="">– keines –</option></select></div>
@@ -184,6 +184,7 @@
         </div>
       </form>
       <p class="hinweis" id="wk-meldung"></p>
+      <div class="feiertag-serie" id="wk-feiertage" hidden></div>
       <p class="hinweis" id="wk-dynamik-hinweis" style="display:none" data-hinweis="wiederkehrend.dynamik-alt"></p>
     </div>
     <div class="block wk-vorlagen-block">
@@ -361,6 +362,7 @@
           <button class="knopf gefahr" type="button" id="darlehen-verwerfen" style="display:none">Änderung verwerfen</button>
         </div>
       </form>
+      <div class="feiertag-serie" id="darlehen-feiertage" hidden></div>
     </div>
     <div class="block">
       <div class="block-kopf">
@@ -447,6 +449,7 @@
           <button class="knopf gefahr" type="button" id="av-verwerfen" style="display:none">Änderung verwerfen</button>
         </div>
       </form>
+      <div class="feiertag-serie" id="av-feiertage" hidden></div>
       <p class="hinweis" data-hinweis="altersvorsorge.betraege"></p>
     </div>
 
@@ -803,8 +806,12 @@
         <summary><h2 data-hilfe="admin.feiertage">Feiertage</h2></summary>
         <div class="details-inhalt">
           <p class="hinweis" data-hinweis="admin.feiertage"></p>
-          <button class="knopf sekundaer" id="feiertage-aktualisieren">Neu berechnen</button>
-          <span id="feiertage-status" class="hinweis"></span>
+          <form class="formular" id="form-feiertage-region">
+            <div><label>Bundesland</label><select name="kuerzel" id="feiertage-region" required></select></div>
+            <div><button class="knopf" type="submit">Speichern</button></div>
+          </form>
+          <p class="hinweis" id="feiertage-status"></p>
+          <div id="feiertage-liste"></div>
         </div>
       </details>
 
@@ -897,6 +904,26 @@
   <div id="darlehen-dialog-inhalt"></div>
 </dialog>
 
+<dialog id="bundesland-dialog" class="reset-dialog">
+  <h2>Bundesland wählen</h2>
+  <p class="hinweis" data-hinweis="feiertage.erststart"></p>
+  <form class="formular" id="form-bundesland">
+    <div><label>Bundesland</label><select name="kuerzel" id="bundesland-auswahl" required></select></div>
+    <div class="reihen-werkzeuge reset-knoepfe"><button class="knopf" type="submit">Übernehmen</button></div>
+  </form>
+</dialog>
+
+<dialog id="datum-dialog" class="reset-dialog">
+  <h2 id="datum-dialog-titel">Datum ändern</h2>
+  <form class="formular" id="form-datum-dialog">
+    <div><label>Neues Datum</label><input type="date" name="datum" required data-feiertag></div>
+    <div class="reihen-werkzeuge reset-knoepfe">
+      <button type="button" class="knopf sekundaer" id="datum-dialog-abbrechen">Abbrechen</button>
+      <button type="submit" class="knopf">Übernehmen</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="wh-dialog" class="reset-dialog">
   <div id="wh-dialog-inhalt"></div>
 </dialog>
@@ -905,6 +932,6 @@
 </dialog>
 
 <script src="assets/vendor/chart.umd.min.js?v=5"></script>
-<script src="assets/app.js?v=20"></script>
+<script src="assets/app.js?v=21"></script>
 </body>
 </html>

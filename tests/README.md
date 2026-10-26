@@ -33,7 +33,9 @@ Für die Oberflächentests startet das Skript den Server auf Port 8935.
 | `v22_test.py` | 2.2: empfohlene Kategorien, Kategorie-Umstellung | `daten/v20` |
 | `v23_test.py` | 2.3: Mehrfachfilter, Saldo je Kategorie, Kennzahlen | Ergebnis von `v2_test.py` |
 | `v24_test.py` | 2.4: Datenbank wiederherstellen, Backup-Namen | `daten/v191`, eingespielt wird `daten/v21` |
+| `v26_test.py` | 2.6: Feiertage (Ostern, Intervalle, Sonderfälle, Verschiebung, Migration, Hinweise, Siri, Import) | `daten/v21` |
 | `ui*_test.py` | Oberfläche der jeweiligen Version (Playwright) | `daten/v191`, ergänzt durch `ui_vorbereiten.py` |
+| `ui26_test.py` | 2.6: Bundesland-Abfrage, Hinweise, Symbol in der Liste, Dialoge | `daten/v191` ohne gewähltes Bundesland |
 | `upgrade_test.py` | Update einer Datenbank mit Vergleich aller Tabellen | beliebig, siehe unten |
 
 Einzeln aufrufen: `python3 tests/v24_test.py finanzverwaltung <quelle> <ziel> [weitere]`.
@@ -48,7 +50,21 @@ erfunden, Backup-Listen sind geleert.
 
 `upgrade_test.py` prüft ein Update: erst mit dem Code der alten Version eine
 Datenbank hochziehen, dann mit dem neuen Code, und alle Tabellen vergleichen.
-Dafür braucht es einen Stand der alten Version, etwa aus einem älteren Commit.
+Dafür braucht es einen Stand der alten Version, etwa aus einem älteren Commit:
+
+```
+git worktree add ../fv-alt <commit der Vorversion>
+UPGRADE_ZEIT_ALT=2027-11-01T12:00:00 UPGRADE_ZEIT_NEU=2027-11-03T12:00:00 \
+  python3 tests/upgrade_test.py finanzverwaltung tests/daten/v21 tests/ausgabe/upgrade ../fv-alt/finanzverwaltung
+```
+
+Die beiden Zeiten frieren die Uhr der Läufe ein. Für 2.6 prüft das Beispiel
+den Übergang an Allerheiligen 2027: 2.5 bucht die Termine zum 01.11. am
+29.10., 2.6 darf sie nicht noch einmal buchen.
+
+Seit 2.6 setzt `alle_tests.py` für die Oberflächenreihen der Vorversionen das
+Bundesland NRW in der kopierten Datenbank, weil sonst die Pflichtabfrage beim
+Start alle Klicks verdeckt. `ui26_test.py` startet ohne diese Vorbelegung.
 
 ## Bekannte Grenze
 

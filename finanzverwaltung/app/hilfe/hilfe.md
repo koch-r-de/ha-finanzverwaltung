@@ -1,5 +1,5 @@
 # Hilfe zur Finanzverwaltung
-Programmversion: 2.5
+Programmversion: 2.6
 
 ## Erste Schritte
 <!-- kapitel: erste-schritte -->
@@ -178,7 +178,7 @@ Hier erfasst du Einnahmen, Ausgaben und Übertragungen und findest alle Buchunge
 1. Öffne „Buchungen“.
 2. Wähle im Block „Neue Buchung“ das „Konto“.
 3. Wähle den „Typ“: „Ist“ für eine Zahlung, die schon passiert ist, oder „Plan“ für eine Zahlung in der Zukunft.
-4. Wähle das „Datum“. Vorbelegt ist heute.
+4. Wähle das „Datum“. Vorbelegt ist heute. Ist der Tag ein Feiertag, steht ein Hinweis unter dem Feld.
 5. Trag den „Betrag (€)“ ohne Vorzeichen ein.
 6. Wähle die „Kategorie“, zum Beispiel „Lebensmittel/Verpflegung“.
 7. Schreib bei Bedarf eine „Beschreibung“ dazu.
@@ -260,6 +260,7 @@ Hier erfasst du Einnahmen, Ausgaben und Übertragungen und findest alle Buchunge
 - Anstehende Termine erscheinen blasser und mit „geplant“. Sie sind noch nicht gespeichert und lassen sich deshalb nicht ändern.
 - Die Spalte „Herkunft“ zeigt, woher eine Buchung stammt: „manuell“, „Vorlage“, „Darlehen“, „Altersvorsorge“ oder „anstehend“.
 - Bei einer Übertragung steht in der Spalte „Konto“ Quelle → Ziel.
+- Ein kleines „F“ hinter dem Datum zeigt einen Feiertag. Zeig mit der Maus darauf, dann siehst du den Namen.
 
 ![Die Buchungsliste mit anstehenden Terminen](bilder/buchungen.liste.png)
 
@@ -310,7 +311,8 @@ Hier legst du Vorlagen für Zahlungen an, die regelmäßig kommen. Das Programm 
 
 **Gut zu wissen**
 
-- Fällt ein Termin auf ein Wochenende oder einen Feiertag, bucht das Programm am Werktag davor.
+- Fällt ein Termin auf ein Wochenende oder einen Bankfeiertag, bucht das Programm am Werktag davor.
+- Nach dem Speichern nennt das Programm unter dem Formular die Termine der nächsten 12 Monate, die auf einen Feiertag fallen. Das ist nur ein Hinweis.
 - Liegt das Startdatum in der Vergangenheit, holt das Programm die verpassten Termine nach.
 - Die Vorlagen-Tabelle scrollt für sich. Das Formular bleibt dabei oben stehen.
 
@@ -386,7 +388,8 @@ Diese Vorlage hat noch eine Dynamik von früher. Sie bleibt beim Speichern erhal
 
 **Gut zu wissen**
 
-- Fällt ein Termin auf ein Wochenende oder einen Feiertag in Nordrhein-Westfalen, bucht das Programm am Werktag davor.
+- Fällt ein Termin auf ein Wochenende oder einen Bankfeiertag, bucht das Programm am Werktag davor. Bankfeiertage sind Neujahr, Karfreitag, Ostermontag, der 1. Mai und der 25. und 26. Dezember.
+- Andere Feiertage, auch die deines Bundeslands, verschieben nichts. Sie werden nur markiert.
 - Lief das Programm ein paar Tage nicht, holt es die Termine beim nächsten Start nach.
 - Ein Termin wird nur einmal gebucht. Auch wenn du die Buchung löschst oder verschiebst, entsteht sie nicht neu.
 
@@ -407,7 +410,7 @@ Das Protokoll zeigt alles, was das Programm von selbst gebucht hat.
 
 1. Öffne „Plan-Buchungen“.
 2. Suche die Buchung in der Tabelle.
-3. Kam die Zahlung an einem anderen Tag? Klicke auf „Datum ändern“ und trag das neue Datum im Format JJJJ-MM-TT ein.
+3. Kam die Zahlung an einem anderen Tag? Klicke auf „Datum ändern“, wähle das neue Datum und klicke auf „Übernehmen“.
 4. Kam die Zahlung gar nicht? Klicke auf „Verwerfen“ und bestätige die Rückfrage.
 
 **Gut zu wissen**
@@ -581,7 +584,7 @@ Hier verwaltest du Kredite mit Auszahlungen, Raten und Sondertilgungen.
 3. Wähle den „Ratenmodus“: „Feste Rate (€)“ mit „Feste Rate (€/Monat)“ oder „Tilgungssatz (%)“ mit „Tilgungssatz (% p.a.)“. Beides steht im Kreditvertrag.
 4. Wähle das „Zahlungskonto“, von dem die Raten abgehen, und bei Bedarf eine „Person (optional)“.
 5. Klicke auf „Anlegen“.
-6. Das Programm fragt nach der ersten Auszahlung. Trag Betrag und Datum ein oder lass das Feld leer, wenn noch nichts ausgezahlt ist.
+6. Das Programm fragt im Fenster „Erste Auszahlung“ nach Datum und Betrag. Klicke auf „Buchen“ oder auf „Überspringen“, wenn noch nichts ausgezahlt ist.
 
 **Gut zu wissen**
 
@@ -589,6 +592,7 @@ Hier verwaltest du Kredite mit Auszahlungen, Raten und Sondertilgungen.
 - Nach dem „Ende Zinsbindung“ rechnet das Programm mit dem „Anschlusszinssatz“. Kennst du ihn noch nicht, trag eine Schätzung ein.
 - Die Raten bucht das Programm als zwei Buchungen: „Darlehens-Zinsen“ und „Tilgung“ unter der Kategorie „Darlehen“.
 - Die Rate tilgt nie mehr als die Restschuld. Die letzte Rate ist entsprechend kleiner.
+- Nach dem Speichern nennt das Programm Raten der nächsten 12 Monate, die auf einen Feiertag fallen.
 
 **Siehe auch:** [Auszahlung erfassen](#darlehen.auszahlung), [Tilgungsplan ansehen](#darlehen.tilgungsplan)
 
@@ -1064,6 +1068,7 @@ Unterwegs buchst du am schnellsten mit der Schnellbuchung oder per Sprachbefehl.
 - Die Seite merkt sich das zuletzt genutzte Konto und die Kategorie.
 - Deine Siri-Favoriten stehen in der Kategorie-Auswahl ganz oben.
 - Gibt es am selben Tag schon den gleichen Betrag auf dem Konto, erscheint ein Hinweis auf eine mögliche Doppelbuchung.
+- Ist das gewählte Datum ein Feiertag, steht ein Hinweis unter dem Feld „Datum“.
 
 ![Die Schnellbuchung](bilder/schnellbuchung.nutzen.png)
 
@@ -1440,22 +1445,41 @@ Ein Sparziel gehört nur an eine Übertragung von oder zu seinem Trägerkonto. A
 
 ### Feiertage
 <!-- kapitel: admin.feiertage -->
-<!-- stichworte: Feiertage, Nordrhein-Westfalen -->
+<!-- stichworte: Feiertage, Bundesland, Bankfeiertag, Werktag, Sonderfall -->
 
-**Wofür?** An Feiertagen gibt es keine Buchungen. Das Programm verschiebt Termine auf den Werktag davor.
+**Wofür?** Das Programm weist dich auf Feiertage in deinem Bundesland hin. Dafür wählst du dein Bundesland.
 
 **So geht's**
 
-1. Du musst nichts tun. Das Programm berechnet die Feiertage bei jedem Start neu.
-2. Willst du sie sofort neu berechnen, öffne „Administration“, Reiter „Stammdaten“, Block „Feiertage“, und klicke auf „Neu berechnen“.
+1. Beim ersten Start fragt das Programm nach deinem Bundesland. Wähle es und klicke auf „Übernehmen“.
+2. Willst du es später ändern, öffne „Administration“, Reiter „Stammdaten“, Block „Feiertage“.
+3. Wähle das „Bundesland“ und klicke auf „Speichern“. Darunter siehst du die Feiertage des laufenden Jahres.
 
 **Gut zu wissen**
 
 <!-- hinweis: admin.feiertage -->
-Das Programm berechnet die Feiertage für Nordrhein-Westfalen selbst, bei jedem Start neu und 30 Jahre im Voraus. Eine Internetverbindung ist nicht nötig.
+Die Auswahl bestimmt nur, welche Tage als Feiertag markiert werden. Buchungen, Termine und Prognose ändern sich nicht.
 <!-- /hinweis -->
 
-**Siehe auch:** [Wann wird gebucht?](#wiederkehrend.automatik)
+<!-- hinweis: feiertage.erststart -->
+Wähle dein Bundesland. Das Programm markiert damit Feiertage, wenn du ein Datum eingibst, und in der Buchungsliste. Ändern kannst du die Auswahl später unter „Administration“, Block „Feiertage“.
+<!-- /hinweis -->
+
+<!-- hinweis: feiertage.serie -->
+Diese Termine der nächsten 12 Monate fallen auf einen Feiertag. Das ist nur ein Hinweis, gebucht wird trotzdem:
+<!-- /hinweis -->
+
+<!-- hinweis: feiertage.import -->
+Diese Daten aus der Datei fallen auf einen Feiertag. Das ist nur ein Hinweis, übernommen wird trotzdem:
+<!-- /hinweis -->
+
+- Gilt bei dir ein Feiertag nur in manchen Orten, wähle den passenden Eintrag, zum Beispiel „Bayern – mit Mariä Himmelfahrt“ oder „Sachsen – mit Fronleichnam“. Welche Feiertage in deinem Ort gelten, erfährst du bei deiner Gemeinde.
+- Feiertage sperren nichts. Du kannst an jedem Tag buchen.
+- Verschoben werden Termine nur an Wochenenden und Bankfeiertagen. Das sind die Tage, an denen der Zahlungsverkehr der Banken ruht.
+- Das Programm berechnet die Feiertage selbst. Eine Internetverbindung ist nicht nötig.
+- Gedenktage und Schulferien markiert das Programm nicht.
+
+**Siehe auch:** [Wann wird gebucht?](#wiederkehrend.automatik), [Buchungsliste filtern](#buchungen.liste)
 
 ### Serverzeit
 <!-- kapitel: admin.serverzeit -->
@@ -1798,6 +1822,8 @@ Lösche das Konto unter Administration bei „Daten zurücksetzen“ mit „Kont
 
 **Anstehender Termin:** Eine Zahlung aus einer Vorlage, einem Darlehen oder einer Altersvorsorge, die noch kommt. Sie ist noch nicht gespeichert.
 
+**Bankfeiertag:** Ein Feiertag, an dem der Zahlungsverkehr der Banken ruht: Neujahr, Karfreitag, Ostermontag, 1. Mai, 25. und 26. Dezember. Termine an diesen Tagen bucht das Programm am Werktag davor.
+
 **Budget:** Ein Betrag, den du für eine Kategorie je Periode einplanst.
 
 **Cashflow:** Was in einem Zeitraum hereinkommt und hinausgeht.
@@ -1844,7 +1870,7 @@ Lösche das Konto unter Administration bei „Daten zurücksetzen“ mit „Kont
 
 **Vorlage:** Eine Zahlung, die regelmäßig wiederkommt und automatisch gebucht wird.
 
-**Werktag:** Ein Tag, der kein Samstag, Sonntag oder Feiertag ist.
+**Werktag:** Ein Tag, der kein Samstag, Sonntag oder Bankfeiertag ist.
 
 **Zinsbindung:** Der Zeitraum, für den der Zinssatz eines Darlehens fest vereinbart ist.
 

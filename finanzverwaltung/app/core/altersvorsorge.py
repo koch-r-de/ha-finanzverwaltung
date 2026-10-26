@@ -222,7 +222,8 @@ def anstehende_termine(conn, feiertage: dict, ab: date, bis: date, id_filter: Op
                     continue
                 betrag = -abs(wiederkehrend_modul.betrag_mit_dynamik(beitrag_vorlage, termin))
                 ergebnis.append({
-                    "datum": verschoben.isoformat(), "betrag": betrag, "konto_id": row["zahlungskonto_id"],
+                    "datum": verschoben.isoformat(), "termin": termin.isoformat(),
+                    "betrag": betrag, "konto_id": row["zahlungskonto_id"],
                     "kategorie_id": row["beitrag_kategorie_id"], "beschreibung": f"{row['bezeichnung']} - Beitrag",
                     "altersvorsorge_id": row["id"], "typ": "Wiederkehrend", "virtuell": True,
                 })
@@ -241,7 +242,7 @@ def anstehende_termine(conn, feiertage: dict, ab: date, bis: date, id_filter: Op
                     # den unveränderten garantierten Betrag.
                     betrag = wiederkehrend_modul.betrag_mit_inflation(betrag, verschoben, inflationsfaktor_prozent)
                 ergebnis.append({
-                    "datum": verschoben.isoformat(), "betrag": betrag,
+                    "datum": verschoben.isoformat(), "termin": termin.isoformat(), "betrag": betrag,
                     "konto_id": row["zahlungskonto_id"], "kategorie_id": row["auszahlung_kategorie_id"],
                     "beschreibung": f"{row['bezeichnung']} - Rente", "altersvorsorge_id": row["id"],
                     "typ": "Wiederkehrend", "virtuell": True,
@@ -253,7 +254,7 @@ def anstehende_termine(conn, feiertage: dict, ab: date, bis: date, id_filter: Op
                 if inflation and row["auszahlung_inflationsflag"]:
                     betrag = wiederkehrend_modul.betrag_mit_inflation(betrag, verschoben, inflationsfaktor_prozent)
                 ergebnis.append({
-                    "datum": verschoben.isoformat(), "betrag": betrag,
+                    "datum": verschoben.isoformat(), "termin": rentenbeginn.isoformat(), "betrag": betrag,
                     "konto_id": row["zahlungskonto_id"], "kategorie_id": row["auszahlung_kategorie_id"],
                     "beschreibung": f"{row['bezeichnung']} - Einmalzahlung", "altersvorsorge_id": row["id"],
                     "typ": "Wiederkehrend", "virtuell": True,

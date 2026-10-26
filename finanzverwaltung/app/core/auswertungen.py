@@ -29,7 +29,7 @@ from . import wiederkehrend as wiederkehrend_modul
 from . import darlehensraten as darlehensraten_modul
 from . import altersvorsorge as altersvorsorge_modul
 from .darlehen import aus_db_zeile, berechne_tilgungsplan
-from .feiertage import vorheriger_werktag
+from .feiertage import bank_kalender, vorheriger_werktag
 from . import zeit
 
 
@@ -156,9 +156,9 @@ def _projektion_darlehensraten(conn, feiertage: dict, heute: date, bis: date, ko
     return ergebnis
 
 
-def _feiertage(conn) -> dict:
-    return {date.fromisoformat(r["datum"]): r["name"]
-            for r in conn.execute("SELECT datum, name FROM feiertage").fetchall()}
+def _feiertage(conn):
+    """Kalender für die Verschiebung fälliger Termine (seit v2.6 TARGET)."""
+    return bank_kalender()
 
 
 def _monatsreihe(von: date, bis: date) -> list:
@@ -613,8 +613,7 @@ def kategorien_zeitraum(conn, von: date, bis: date, konto_ids=None,
     if bis > heute:
         ab = max(heute, von - relativedelta(days=1))
         if ab < bis:
-            feiertage = {date.fromisoformat(row["datum"]): row["name"]
-                         for row in conn.execute("SELECT datum, name FROM feiertage").fetchall()}
+            feiertage = bank_kalender()
             anstehend = wiederkehrend_modul.anstehende_termine(conn, feiertage, ab, bis,
                                                                 inkl_umbuchungen=False, inflation=inflation)
             anstehend += darlehensraten_modul.anstehende_raten(conn, feiertage, ab, bis)

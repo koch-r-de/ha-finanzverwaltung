@@ -41,7 +41,7 @@ Entwicklung immer ein eigenes Datenverzeichnis setzen. `FINANZAPP_FESTE_ZEIT`
 | Modul | Aufgabe |
 | --- | --- |
 | `db.py` | Pfade, Verbindung, `initialisieren()` mit allen Migrationen, feste Kategorien |
-| `startup.py` | Programmstart: Feiertage, fällige Buchungen aus Vorlagen, Darlehen, Altersvorsorge, Plan → Ist, Backup |
+| `startup.py` | Programmstart: fällige Buchungen aus Vorlagen, Darlehen, Altersvorsorge, Plan → Ist, Backup |
 | `buchungen.py` | Konten, Kategorien, Buchungen, Saldo, `sql_in()` für Mehrfachfilter |
 | `wiederkehrend.py` | Vorlagen: Termine, Dynamik, Inflation, Erzeugung |
 | `darlehen.py`, `darlehensraten.py` | Tilgungsplan und fällige Raten |
@@ -53,7 +53,7 @@ Entwicklung immer ein eigenes Datenverzeichnis setzen. `FINANZAPP_FESTE_ZEIT`
 | `zuruecksetzen.py` | „Daten zurücksetzen“ mit Bestätigungsphrase |
 | `wiederherstellen.py` | Datenbank aus Datei oder Backup einspielen |
 | `backup.py` | Backups zum 15. und Monatsende, manuelle Backups, Rotation (12) |
-| `feiertage.py` | Feiertage NRW, `vorheriger_werktag()` |
+| `feiertage.py` | Regeltabelle aller Feiertage je Bundesland, TARGET-Bankkalender, `vorheriger_werktag()` |
 | `zeit.py` | `heute()` und `jetzt()` in Europe/Berlin |
 | `hilfe.py`, `hilfe_pdf.py` | Hilfedatei zerlegen und prüfen, PDF mit ReportLab |
 | `../roundtrip.py` | XLSX-Export und -Import aller Bereiche |
@@ -70,6 +70,10 @@ Entwicklung immer ein eigenes Datenverzeichnis setzen. `FINANZAPP_FESTE_ZEIT`
 - **Prognose:** Künftige Termine aus Vorlagen, Darlehen und Altersvorsorge
   werden gerechnet, nicht gespeichert. Gebucht wird erst beim Programmstart,
   wenn ein Termin fällig ist, verschoben auf den Werktag davor.
+- **Feiertage:** Verschoben wird nur nach `feiertage.bank_kalender()`
+  (Wochenende und TARGET-Schließtage). Das gewählte Bundesland dient nur der
+  Markierung, nie der Berechnung. Neue Feiertage oder Gesetzesänderungen als
+  neue Zeile in `feiertage.REGELN`, mit Rechtsgrundlage und Prüfstatus.
 - **Feste Kategorien** immer über `system_key` auflösen, nie über eine ID.
 - **Mehrfachfilter** (Konten, Kategorien) sind Mengen: `None` = kein Filter,
   leere Menge = nichts. API-Parameter `konten=1,3`, `kategorien=4,5`.
@@ -155,7 +159,9 @@ Dabei die Testdaten erfunden halten und keine echten Personendaten
 Neue Funktionen bekommen eine eigene
 Testreihe `vXY_test.py` (fachlich) und `uiXY_test.py` (Oberfläche), mit
 Fehlerfällen, nicht nur dem Erfolgsweg. Bei Update-relevanten Änderungen
-zusätzlich `upgrade_test.py` mit einer Datenbank der Vorversion.
+zusätzlich `upgrade_test.py` mit einer Datenbank der Vorversion (Aufruf in
+`tests/README.md`). Oberflächenreihen starten mit gewähltem Bundesland,
+sonst blockiert die Pflichtabfrage (`alle_tests.bundesland_vorbelegen`).
 
 ## Arbeitsweise
 

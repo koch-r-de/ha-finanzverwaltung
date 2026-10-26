@@ -292,7 +292,8 @@ def anstehende_termine(conn, feiertage: dict, ab: date, bis: date, vorlage_id: O
                 continue
             if umbuchung:
                 ergebnis.append({
-                    "datum": verschoben.isoformat(), "betrag": round(abs(vorlage["betrag"]), 2),
+                    "datum": verschoben.isoformat(), "termin": termin.isoformat(),
+                    "betrag": round(abs(vorlage["betrag"]), 2),
                     "konto_id": vorlage["konto_id"], "zielkonto_id": vorlage["zielkonto_id"],
                     "kategorie_id": vorlage["kategorie_id"], "sparziel_id": vorlage["sparziel_id"],
                     "beschreibung": vorlage["beschreibung"], "wiederkehrend_id": vorlage["id"],
@@ -310,7 +311,7 @@ def anstehende_termine(conn, feiertage: dict, ab: date, bis: date, vorlage_id: O
                 # buchungen, die inflationsflag nur unverändert mitführt).
                 betrag = betrag_mit_inflation(betrag, verschoben, inflationsfaktor_prozent)
             ergebnis.append({
-                "datum": verschoben.isoformat(), "betrag": betrag,
+                "datum": verschoben.isoformat(), "termin": termin.isoformat(), "betrag": betrag,
                 "konto_id": vorlage["konto_id"], "kategorie_id": vorlage["kategorie_id"],
                 "beschreibung": vorlage["beschreibung"], "wiederkehrend_id": vorlage["id"],
                 "typ": "Wiederkehrend", "virtuell": True,

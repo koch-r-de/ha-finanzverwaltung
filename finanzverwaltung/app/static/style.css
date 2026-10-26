@@ -376,6 +376,15 @@ table td:first-child, table th:first-child { white-space: nowrap; }
   margin-left: 4px; vertical-align: middle;
 }
 .warnung { font-size: 12.5px; color: var(--rot); background: #a23e3e12; border: 1px solid #a23e3e40; border-radius: var(--radius); padding: 8px 10px; margin: 8px 0; }
+/* Feiertage (seit v2.6): nur Hinweis, nichts gesperrt */
+.feiertag-hinweis { display: block; margin-top: 3px; font-size: 11.5px; color: #6a4f1d; }
+.feiertag-hinweis[hidden] { display: none; }
+.feiertag-marke { display: inline-block; min-width: 15px; height: 15px; line-height: 15px; margin-left: 4px; border-radius: 999px;
+  background: var(--messing-hell); color: #6a4f1d; font-size: 9.5px; font-weight: 600; text-align: center; vertical-align: 1px; cursor: help; }
+.feiertag-serie { font-size: 12.5px; color: #6a4f1d; background: var(--messing-hell); border-radius: var(--radius); padding: 8px 10px; margin: 8px 0; }
+.feiertag-serie[hidden] { display: none; }
+.feiertag-serie p { margin: 0 0 4px; }
+.feiertag-serie ul { margin: 0; padding-left: 18px; }
 
 .diagramm-flaeche { position: relative; height: 320px; }
 

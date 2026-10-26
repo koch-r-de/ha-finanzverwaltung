@@ -247,11 +247,8 @@ CREATE TABLE IF NOT EXISTS plan_buchung_protokoll (
     hinweis           TEXT
 );
 
--- ─── Feiertage (lokal berechnet, NRW) ───────────────────────────────
-CREATE TABLE IF NOT EXISTS feiertage (
-    datum  DATE PRIMARY KEY,
-    name   TEXT NOT NULL
-);
+-- Feiertage: seit v2.6 keine Tabelle mehr, berechnet aus der Regeltabelle
+-- in app/core/feiertage.py (Region aus der Einstellung 'bundesland').
 
 -- ─── Backups ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS backups_log (
@@ -272,6 +269,11 @@ INSERT OR IGNORE INTO einstellungen (key, value) VALUES ('inflationsfaktor', '2.
 INSERT OR IGNORE INTO einstellungen (key, value) VALUES ('prognose_min_perioden', '3');
 INSERT OR IGNORE INTO einstellungen (key, value) VALUES ('auto_kategorisierung', '1');
 INSERT OR IGNORE INTO einstellungen (key, value) VALUES ('siri_standardkonto', '');
+-- v2.6: gewählte Feiertagsregion (Kürzel aus feiertage.REGIONEN), leer =
+-- noch nicht gewählt, dann fragt die Oberfläche beim Start. Vorschlag nur
+-- für Datenbanken von vor 2.6 (NRW, siehe db._migriere_feiertage_v26).
+INSERT OR IGNORE INTO einstellungen (key, value) VALUES ('bundesland', '');
+INSERT OR IGNORE INTO einstellungen (key, value) VALUES ('bundesland_vorschlag', '');
 -- GUI-Theme-Farben (Administration -> System -> "Farben"). Leer = eingebauter
 -- Standard (siehe :root in style.css) - überschrieben nur bei explizit
 -- gesetztem, nicht-leerem Wert. grundton-dunkel/messing-hell/papier-karte

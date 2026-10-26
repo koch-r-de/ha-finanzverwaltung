@@ -49,6 +49,7 @@ from pydantic import ValidationError
 
 from . import main as api
 from .core import backup, zeit
+from .core import feiertage as feiertage_modul
 from .core import buchungen as bm
 from .core import budgets as budgets_modul
 from .core import personen as personen_modul
@@ -929,7 +930,7 @@ def _verarbeiten(conn_echt, daten: dict) -> dict:
     # Savepoints bereits committen (SQLite-Verhalten).
     if not conn_echt.in_transaction:
         conn_echt.execute("BEGIN")
-    ergebnis = {"bereiche": [], "fehler": 0, "aenderungen": 0, "hinweise": []}
+    ergebnis = {"bereiche": [], "fehler": 0, "aenderungen": 0, "hinweise": [], "feiertagshinweise": []}
     loeschungen = []   # (bereich, nr, id, alt)
     # Stand zu Beginn: Einträge, die im Lauf als Folge einer anderen Änderung
     # wegfallen (z. B. Phasenbereinigung der Altersvorsorge), werden so
@@ -1001,7 +1002,8 @@ def _verarbeiten(conn_echt, daten: dict) -> dict:
                 if alt is None:
                     werte = {f.name: f.standard for f in bereich.felder if not f.nur_lesen}
                     werte.update(werte_datei)
-                    bereich.anlegen(conn, ctx, werte)
+                    neu_id = bereich.anlegen(conn, ctx, werte)
+                    ergebnis["feiertagshinweise"] += _feiertagshinweise(conn, bereich, neu_id, werte, nr, z, True)
                     info["neu"] += 1
                     info["details"].append({"zeile": nr, "aktion": "neu", "titel": _titel(bereich, werte, z)})
                 else:
@@ -1016,6 +1018,8 @@ def _verarbeiten(conn_echt, daten: dict) -> dict:
                     werte.update(werte_datei)
                     ergebnis["hinweise"] += bereich.hinweise_vor_aenderung(conn, ctx, id_, werte, alt)
                     bereich.aendern(conn, ctx, id_, werte, alt)
+                    ergebnis["feiertagshinweise"] += _feiertagshinweise(conn, bereich, id_, werte, nr, z,
+                                                                        "datum" in geaendert)
                     info["geaendert"] += 1
                     felder = {f.name: f for f in bereich.felder}
                     info["details"].append({
@@ -1053,6 +1057,29 @@ def _verarbeiten(conn_echt, daten: dict) -> dict:
     return ergebnis
 
 
+SERIEN_BEREICHE = {"wiederkehrend": "wiederkehrend", "darlehen": "darlehen", "altersvorsorge": "altersvorsorge"}
+
+
+def _feiertagshinweise(conn, bereich, id_, werte, nr, z, datum_neu) -> list[dict]:
+    """Seit v2.6: Feiertagshinweise für neue oder geänderte Zeilen. Einzelne
+    Buchungsdaten (Buchungen, Auszahlungen) nur, wenn das Datum neu ist oder
+    sich ändert. Serien (Vorlagen, Darlehen, Altersvorsorge) bei jeder
+    Änderung, Termine der nächsten 12 Monate wie im Formular."""
+    region = feiertage_modul.gewaehlte_region(conn)
+    if bereich.key in ("buchungen", "auszahlungen"):
+        if not datum_neu or not werte.get("datum"):
+            return []
+        h = feiertage_modul.datum_hinweis(date.fromisoformat(werte["datum"]), region)
+        treffer = [h] if h else []
+    elif bereich.key in SERIEN_BEREICHE and id_:
+        treffer = api._serien_hinweise(conn, SERIEN_BEREICHE[bereich.key], id_)
+    else:
+        return []
+    titel = _titel(bereich, werte, z)
+    return [{"sheet": bereich.sheet, "zeile": nr, "titel": titel, "text": h.get("text") or feiertage_modul.hinweis_text(h)}
+            for h in treffer]
+
+
 def _text(ctx, feld, wert):
     if wert is None or wert == "":
         return "–"
@@ -1072,7 +1099,7 @@ def _konflikt_pruefen(bereich, conn, alt, z):
 def vorschau(conn, dateiname: str, rohbytes: bytes, art: Optional[str]) -> dict:
     daten = datei_einlesen(dateiname, rohbytes, art)
     if not daten:
-        return {"bereiche": [], "fehler": 0, "aenderungen": 0, "hinweise": [], "token": None,
+        return {"bereiche": [], "fehler": 0, "aenderungen": 0, "hinweise": [], "feiertagshinweise": [], "token": None,
                 "meldung": "Die Datei enthält keine erkennbaren Tabs bzw. Zeilen."}
     try:
         ergebnis = _verarbeiten(conn, daten)

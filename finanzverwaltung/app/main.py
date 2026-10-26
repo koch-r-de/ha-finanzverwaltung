@@ -45,6 +45,7 @@ from .core import altersvorsorge as altersvorsorge_modul
 from .core import auswertungen, backup, buchungen, budgets as budgets_modul
 from .core import darlehen as darlehen_modul
 from .core import darlehensraten
+from .core import feiertage as feiertage_modul
 from .core import db as db_modul
 from .core import import_export
 from .core import personen as personen_modul
@@ -343,8 +344,7 @@ def api_buchungen(konto_id: Optional[int] = None, von: Optional[str] = None,
             bis_dt = _parse_datum(bis) or (heute + relativedelta(months=wiederkehrend.ANZEIGE_HORIZONT_MONATE))
             ab = max(heute, von_dt - relativedelta(days=1))
             if ab < bis_dt:
-                feiertage = {date.fromisoformat(r["datum"]): r["name"]
-                             for r in conn.execute("SELECT datum, name FROM feiertage").fetchall()}
+                feiertage = feiertage_modul.bank_kalender()
                 anstehend = wiederkehrend.anstehende_termine(conn, feiertage, ab, bis_dt, inflation=inflation)
                 anstehend += darlehensraten.anstehende_raten(conn, feiertage, ab, bis_dt)
                 anstehend += altersvorsorge_modul.anstehende_termine(conn, feiertage, ab, bis_dt, inflation=inflation)
@@ -568,7 +568,8 @@ def _wk_anlegen(conn, payload: WiederkehrendIn) -> int:
 def api_wiederkehrend_anlegen(payload: WiederkehrendIn):
     conn = verbindung()
     try:
-        return {"id": _wk_anlegen(conn, payload)}
+        neu_id = _wk_anlegen(conn, payload)
+        return {"id": neu_id, "feiertagshinweise": _serien_hinweise(conn, "wiederkehrend", neu_id)}
     finally:
         conn.close()
 
@@ -597,7 +598,7 @@ def api_wiederkehrend_bearbeiten(vorlage_id: int, payload: WiederkehrendIn):
     conn = verbindung()
     try:
         _wk_aendern(conn, vorlage_id, payload)
-        return {"ok": True}
+        return {"ok": True, "feiertagshinweise": _serien_hinweise(conn, "wiederkehrend", vorlage_id)}
     finally:
         conn.close()
 
@@ -707,7 +708,8 @@ def _darlehen_anlegen(conn, payload: DarlehenIn) -> int:
 def api_darlehen_anlegen(payload: DarlehenIn):
     conn = verbindung()
     try:
-        return {"id": _darlehen_anlegen(conn, payload)}
+        neu_id = _darlehen_anlegen(conn, payload)
+        return {"id": neu_id, "feiertagshinweise": _serien_hinweise(conn, "darlehen", neu_id)}
     finally:
         conn.close()
 
@@ -748,7 +750,7 @@ def api_darlehen_bearbeiten(darlehen_id: int, payload: DarlehenIn):
     conn = verbindung()
     try:
         _darlehen_aendern(conn, darlehen_id, payload)
-        return {"ok": True}
+        return {"ok": True, "feiertagshinweise": _serien_hinweise(conn, "darlehen", darlehen_id)}
     finally:
         conn.close()
 
@@ -1026,8 +1028,14 @@ def api_einstellungen():
         conn.close()
 
 
+# Einstellungen mit eigener Prüfung, nicht über den allgemeinen Endpunkt.
+EINSTELLUNGEN_GESCHUETZT = {"bundesland", "bundesland_vorschlag"}
+
+
 @app.put("/api/admin/einstellungen/{key}")
 def api_einstellung_setzen(key: str, value: str):
+    if key in EINSTELLUNGEN_GESCHUETZT:
+        raise HTTPException(422, "Diese Einstellung wird über ihren eigenen Dialog geändert.")
     conn = verbindung()
     try:
         conn.execute("UPDATE einstellungen SET value = ? WHERE key = ?", (value, key))
@@ -1255,15 +1263,58 @@ def api_import_ausfuehren(payload: ImportAusfuehrenIn):
         conn.close()
 
 
-@app.post("/api/admin/feiertage/aktualisieren")
-def api_feiertage_aktualisieren():
-    """Berechnet die Feiertage komplett neu wie beim Start (rein lokal)."""
+# ─── Feiertage (seit v2.6) ──────────────────────────────────────────
+# Region wählbar, nur zur Markierung. Verschoben wird nach TARGET.
+
+FEIERTAGE_MAX_JAHRE = 60
+
+
+@app.get("/api/feiertage/regionen")
+def api_feiertage_regionen():
     conn = verbindung()
     try:
-        alle = startup.feiertage_neu_berechnen(conn, zeit.heute())
-        return {"anzahl": len(alle)}
+        vorschlag = conn.execute("SELECT value FROM einstellungen WHERE key = 'bundesland_vorschlag'").fetchone()
+        return {"regionen": [{"kuerzel": k, "name": n} for k, n in feiertage_modul.REGIONEN],
+                "gewaehlt": feiertage_modul.gewaehlte_region(conn),
+                "vorschlag": (vorschlag["value"] if vorschlag else "") or ""}
     finally:
         conn.close()
+
+
+class FeiertagsregionIn(BaseModel):
+    kuerzel: str
+
+
+@app.put("/api/feiertage/region")
+def api_feiertage_region_setzen(payload: FeiertagsregionIn):
+    if payload.kuerzel not in feiertage_modul.REGION_NAMEN:
+        raise HTTPException(422, "Bitte ein Bundesland aus der Liste wählen.")
+    conn = verbindung()
+    try:
+        conn.execute("INSERT OR REPLACE INTO einstellungen (key, value) VALUES ('bundesland', ?)", (payload.kuerzel,))
+        conn.execute("INSERT OR REPLACE INTO einstellungen (key, value) VALUES ('bundesland_vorschlag', '')")
+        conn.commit()
+        return {"ok": True, "kuerzel": payload.kuerzel, "name": feiertage_modul.REGION_NAMEN[payload.kuerzel]}
+    finally:
+        conn.close()
+
+
+@app.get("/api/feiertage")
+def api_feiertage(von_jahr: Optional[int] = None, bis_jahr: Optional[int] = None):
+    """Feiertage der gewählten Region und TARGET-Schließtage für die
+    Oberfläche, die damit Eingaben im Browser prüft."""
+    heute = zeit.heute()
+    von_jahr = von_jahr or heute.year
+    bis_jahr = bis_jahr or von_jahr
+    if not (1900 <= von_jahr <= bis_jahr <= 9998) or bis_jahr - von_jahr >= FEIERTAGE_MAX_JAHRE:
+        raise HTTPException(422, f"Jahre von 1900 bis 9998, höchstens {FEIERTAGE_MAX_JAHRE} Jahre auf einmal.")
+    conn = verbindung()
+    try:
+        region = feiertage_modul.gewaehlte_region(conn)
+    finally:
+        conn.close()
+    return {"region": region, "region_name": feiertage_modul.REGION_NAMEN.get(region, ""),
+            "tage": feiertage_modul.feiertage_liste(region, von_jahr, bis_jahr)}
 
 
 # ─── Suche ──────────────────────────────────────────────────────────
@@ -1740,10 +1791,14 @@ def api_siri_buchung(payload: SiriBuchungIn):
         )
         kat_name = conn.execute("SELECT name FROM kategorien WHERE id = ?", (kategorie_id,)).fetchone()["name"]
         betrag_gebucht = conn.execute("SELECT betrag FROM buchungen WHERE id = ?", (buchung_id,)).fetchone()["betrag"]
+        # Seit v2.6 zusätzlich "feiertagshinweis" (Text oder null). "meldung"
+        # bleibt unverändert, damit bestehende Kurzbefehle gleich sprechen.
+        hinweis = feiertage_modul.datum_hinweis(datum, feiertage_modul.gewaehlte_region(conn))
         return {
             "id": buchung_id,
             "meldung": f"{abs(betrag_gebucht):.2f} Euro als {kat_name} auf {konto['name']} gebucht.",
             "konto": konto["name"], "kategorie": kat_name, "betrag": betrag_gebucht,
+            "feiertagshinweis": feiertage_modul.hinweis_text(hinweis) if hinweis else None,
         }
     finally:
         conn.close()
@@ -1867,9 +1922,30 @@ def _av_werte(payload: AltersvorsorgeIn) -> tuple:
     )
 
 
-def _feiertage_laden(conn) -> dict:
-    return {date.fromisoformat(r["datum"]): r["name"]
-            for r in conn.execute("SELECT datum, name FROM feiertage").fetchall()}
+SERIEN_HINWEIS_MONATE = 12
+
+
+def _serien_hinweise(conn, art: str, quelle_id: int) -> list[dict]:
+    """Feiertagshinweise zu den Terminen der nächsten 12 Monate einer
+    Vorlage, eines Darlehens oder einer Altersvorsorge (seit v2.6). Nur
+    Hinweis, nichts wird gesperrt oder übersprungen."""
+    heute = zeit.heute()
+    ab, bis = heute - relativedelta(days=1), heute + relativedelta(months=SERIEN_HINWEIS_MONATE)
+    kalender = _feiertage_laden(conn)
+    if art == "wiederkehrend":
+        posten = wiederkehrend.anstehende_termine(conn, kalender, ab, bis, vorlage_id=quelle_id)
+    elif art == "darlehen":
+        posten = darlehensraten.anstehende_raten(conn, kalender, ab, bis, darlehen_id=quelle_id)
+    else:
+        posten = altersvorsorge_modul.anstehende_termine(conn, kalender, ab, bis, id_filter=quelle_id)
+    region = feiertage_modul.gewaehlte_region(conn)
+    return feiertage_modul.termin_hinweise(
+        [(date.fromisoformat(p["termin"]), date.fromisoformat(p["datum"])) for p in posten], region)
+
+
+def _feiertage_laden(conn):
+    """Kalender für die Verschiebung fälliger Termine (seit v2.6 TARGET)."""
+    return feiertage_modul.bank_kalender()
 
 
 @app.get("/api/altersvorsorge")
@@ -1935,7 +2011,8 @@ def _av_anlegen(conn, payload: AltersvorsorgeIn) -> int:
 def api_altersvorsorge_anlegen(payload: AltersvorsorgeIn):
     conn = verbindung()
     try:
-        return {"id": _av_anlegen(conn, payload)}
+        neu_id = _av_anlegen(conn, payload)
+        return {"id": neu_id, "feiertagshinweise": _serien_hinweise(conn, "altersvorsorge", neu_id)}
     finally:
         conn.close()
 
@@ -2000,7 +2077,7 @@ def api_altersvorsorge_bearbeiten(av_id: int, payload: AltersvorsorgeIn, phasen_
     conn = verbindung()
     try:
         _av_aendern(conn, av_id, payload, phasen_bereinigen)
-        return {"ok": True}
+        return {"ok": True, "feiertagshinweise": _serien_hinweise(conn, "altersvorsorge", av_id)}
     finally:
         conn.close()
 

@@ -40,6 +40,7 @@ from typing import Optional
 
 from dateutil.relativedelta import relativedelta
 from . import zeit
+from .feiertage import bank_kalender
 
 STANDARD_WARNUNGEN = '[{"schwelle": 80, "typ": "Warnung"}]'
 
@@ -287,8 +288,7 @@ def _projizierte_fixkosten(conn, budget, ab: date, bis: date, inflation: bool = 
         return 0.0
     ids = set(kategorie_ids(conn, budget["kategorie_id"], budget["inkl_unterkategorien"]))
     vorher = ab - timedelta(days=1)  # anstehende_* liefern (vorher, bis]
-    feiertage = {date.fromisoformat(r["datum"]): r["name"]
-                 for r in conn.execute("SELECT datum, name FROM feiertage").fetchall()}
+    feiertage = bank_kalender()
 
     # Umbuchungs-Vorlagen (seit v1.10) zählen wie echte Übertragungen nicht.
     posten = wiederkehrend_modul.anstehende_termine(conn, feiertage, vorher, bis, inkl_umbuchungen=False,
@@ -426,8 +426,7 @@ def verlauf_je_monat(conn, kategorie_ids: list[int], von_monat: date, bis_monat:
     if ids and bis_monat >= heute_monat:
         ab = heute_monat + relativedelta(months=1)
         bis_projektion = bis_monat + relativedelta(months=1) - timedelta(days=1)
-        feiertage = {date.fromisoformat(r["datum"]): r["name"]
-                     for r in conn.execute("SELECT datum, name FROM feiertage").fetchall()}
+        feiertage = bank_kalender()
         # anstehende_* liefern (von, bis]. Seit v2.0 ab heute: noch anstehende
         # Termine des laufenden Monats landen als heller "Prognose"-Aufsatz im
         # laufenden Monat (Punkt 1). Damit sind auch Termine am 1. des

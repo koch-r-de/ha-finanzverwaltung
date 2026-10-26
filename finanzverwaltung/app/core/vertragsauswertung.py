@@ -23,7 +23,7 @@ from dateutil.relativedelta import relativedelta
 from . import altersvorsorge as altersvorsorge_modul
 from .darlehensraten import tilgungsplan_laden
 from .db import kategorie_id
-from .feiertage import vorheriger_werktag
+from .feiertage import bank_kalender, vorheriger_werktag
 from . import zeit
 
 HORIZONT_JAHRE = altersvorsorge_modul.ROLLIERENDER_HORIZONT_JAHRE
@@ -33,9 +33,9 @@ def _r(x: float) -> float:
     return round(x or 0.0, 2)
 
 
-def _feiertage(conn) -> dict:
-    return {date.fromisoformat(r["datum"]): r["name"]
-            for r in conn.execute("SELECT datum, name FROM feiertage").fetchall()}
+def _feiertage(conn):
+    """Kalender für die Verschiebung fälliger Termine (seit v2.6 TARGET)."""
+    return bank_kalender()
 
 
 def _im_zeitraum(jahr: int, von: Optional[date], bis: Optional[date]) -> bool:
