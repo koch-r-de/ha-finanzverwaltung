@@ -1,5 +1,5 @@
 name: "Private Finanzverwaltung"
-version: "2.6.1"
+version: "2.6.2"
 slug: "finanzverwaltung"
 description: "Private Finanzverwaltung mit Konten, Budgets, Darlehen und Auswertungen"
 url: "https://github.com/koch-r-de/ha-finanzverwaltung"
@@ -14,5 +14,9 @@ ingress_port: 8099
 panel_icon: mdi:cash-multiple
 panel_title: Finanzen
 panel_admin: false
-options: {}
-schema: {}
+# herkunft_pruefen (seit 2.6.2, Befund Q): protokoll = nur mitschreiben,
+# sperren = fremde Zugriffe im internen Netz abweisen, aus = keine Prüfung
+options:
+  herkunft_pruefen: protokoll
+schema:
+  herkunft_pruefen: list(aus|protokoll|sperren)?

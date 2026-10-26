@@ -2,6 +2,11 @@
 
 Ausführlich zu jeder Version: DOCS.md, Abschnitte „Neu in Version …“.
 
+## 2.6.2
+
+- Sicherheit: Herkunftsprüfung im internen Netz von Home Assistant, Option „Zugriff im internen Netz prüfen“ (Standard: nur protokollieren), andere Add-ons lassen sich damit aussperren (Befund Q).
+- Hilfe: eigenes Unterkapitel „Feiertage und Buchungstermine“.
+
 ## 2.6.1
 
 - Korrektur: „Neue Buchung“ speicherte bei Ist und Plan ein Zielkonto, Anzeige „A → B“ und falsche Treffer im Kontofilter (Befund P). Bestehende Buchungen werden einmalig korrigiert, mit Backup vorher.

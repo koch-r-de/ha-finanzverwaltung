@@ -138,6 +138,56 @@ neuen Darlehen); die Karte zeigt daraus den noch nicht ausgezahlten Rest.
 Bestehende Darlehen bleiben ohne Summe, bis sie über "Ändern" nachgetragen
 wird.
 
+## Neu in Version 2.6.2
+
+**Befund Q (gefunden bei der Recherche zu Verschlüsselung und Passwortschutz,
+besteht seit der ersten Add-on-Version):** Der Server lauscht im Container auf
+0.0.0.0:8099 und prüfte die Herkunft der Anfragen nicht. Aus dem LAN ist er
+nicht erreichbar, weil `config.yaml` weder `host_network` noch `ports` setzt.
+Im internen Netz von Home Assistant konnte aber jedes andere Add-on über den
+Hostnamen (zum Beispiel `e396af1a-finanzverwaltung:8099`) alle Daten lesen
+und ändern, ohne Anmeldung. Die Add-on-Doku empfiehlt bei Ingress, nur
+Verbindungen von 172.30.32.2 anzunehmen. Ein vergleichbarer, schwererer Fall
+war CVE-2026-59177 im ESPHome-Add-on (dort sogar aus dem LAN erreichbar).
+
+Behebung: Middleware `HerkunftPruefenMiddleware` mit der Add-on-Option
+„Zugriff im internen Netz prüfen“ (`herkunft_pruefen`):
+- `protokoll` (Standard in 2.6.2): nichts sperren, jede neue Herkunftsadresse
+  einmal im Add-on-Protokoll („Zugriff von … auf …: erlaubt“ bzw. „wäre
+  gesperrt“),
+- `sperren`: nur Ingress (172.30.32.2), Home Assistant selbst (172.30.32.1,
+  für `rest_command` und `rest` der Siri-Anbindung) und lokale Aufrufe
+  zulassen, alles andere mit 403 „Zugriff nur über Home Assistant.“,
+- `aus`: keine Prüfung (auch der Desktop-Modus und die Tests ohne Option).
+
+Dass Home Assistant selbst intern mit 172.30.32.1 ankommt, ist eine Annahme
+(ungeprüft). Deshalb startet 2.6.2 mit `protokoll`: erst im Protokoll die
+Adressen von Seitenleiste und Siri prüfen, dann auf `sperren` stellen.
+
+**Einschätzung Verschlüsselung (Stand 26.10.2026):** Zugriff ist über die
+Anmeldung bei Home Assistant geschützt (Ingress). Die Übertragung von außen
+sichert Home Assistant (HTTPS bzw. Home Assistant Cloud), intern läuft HTTP
+im Docker-Netz desselben Geräts. Die Datenpartition von Home Assistant OS ist
+nach der Dokumentation des Partitionslayouts nicht verschlüsselt (keine
+Erwähnung, ungeprüft). Automatische Backups von Home Assistant sind seit
+2025.1 verschlüsselt und enthalten `/data` des Add-ons. Unverschlüsselt sind
+die add-on-eigenen Backups unter `/data/Backups` und „Datenbank
+herunterladen“. Eine Verschlüsselung der Datenbank selbst ginge mit SQLCipher
+(`sqlcipher3-wheels`, Wheels für musllinux aarch64), offen ist die
+Schlüsselfrage (Schlüssel in den Optionen schützt die SD-Karte nicht, ein
+Passwort bei jedem Start sperrt Automatik und Siri bis zur Eingabe).
+Entscheidung steht aus.
+
+**Hilfe:** neues Unterkapitel „Feiertage und Buchungstermine“
+(`admin.feiertage-termine`) erklärt Feiertage des Bundeslands (nur Markierung)
+gegenüber Bankfeiertagen (Verschiebung) mit Beispielen. Das Kapitel
+„Feiertage“ verweist darauf, Doppeltes ist dort entfernt. „Siri: Wenn etwas
+nicht klappt“ nennt die Meldung „Zugriff nur über Home Assistant“.
+
+Tests: neue Reihe `v262_test.py` (alle drei Modi, Ingress, Home Assistant,
+lokal, fremdes Add-on, Siri-Buchung, Protokollzeilen, Hilfe). Gegenprobe mit
+dem Code von 2.6.1 scheitert wie erwartet.
+
 ## Neu in Version 2.6.1
 
 **Befund P (gefunden beim Oberflächentest zu 2.6, besteht seit mindestens

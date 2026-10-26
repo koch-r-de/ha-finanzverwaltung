@@ -1,0 +1,7 @@
+configuration:
+  herkunft_pruefen:
+    name: Zugriff im internen Netz prüfen
+    description: >-
+      „protokoll“ schreibt jede neue Herkunftsadresse einmal ins Protokoll,
+      „sperren“ lässt nur Home Assistant (Seitenleiste, Siri) zu und weist
+      andere Add-ons ab, „aus“ prüft nichts.

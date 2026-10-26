@@ -1,5 +1,5 @@
 # Hilfe zur Finanzverwaltung
-Programmversion: 2.6.1
+Programmversion: 2.6.2
 
 ## Erste Schritte
 <!-- kapitel: erste-schritte -->
@@ -393,7 +393,7 @@ Diese Vorlage hat noch eine Dynamik von früher. Sie bleibt beim Speichern erhal
 - Lief das Programm ein paar Tage nicht, holt es die Termine beim nächsten Start nach.
 - Ein Termin wird nur einmal gebucht. Auch wenn du die Buchung löschst oder verschiebst, entsteht sie nicht neu.
 
-**Siehe auch:** [Protokoll prüfen](#plan.protokoll), [Feiertage](#admin.feiertage)
+**Siehe auch:** [Protokoll prüfen](#plan.protokoll), [Feiertage und Buchungstermine](#admin.feiertage-termine)
 
 ## Plan-Buchungen
 <!-- kapitel: plan -->
@@ -1234,6 +1234,7 @@ Für das Konto und für die Kategorie baust du je vier Aktionen vor die Buchungs
 2. Steht im Feld kategorie plötzlich eine Zahl? Dann ist die falsche Variable verknüpft. Benenne die Variablen um und verknüpfe sie neu.
 3. Klappt es unterwegs nicht? Die Kurzbefehle funktionieren nur im heimischen WLAN, wenn Home Assistant von außen nicht erreichbar ist.
 4. Meldet das Programm „mehrdeutig“? Der Name passt zu mehreren Kategorien, zum Beispiel „Zinsen“ zu „Darlehens-Zinsen“ und „Zinsen & Kapitalerträge“. Nenne den Namen vollständig.
+5. Kommt „Zugriff nur über Home Assistant“ zurück? Dann steht in der Konfiguration des Add-ons „Zugriff im internen Netz prüfen“ auf „sperren“, und die Anfrage kam nicht über Home Assistant. Prüfe die Adresse in deiner configuration.yaml und schau im Protokoll des Add-ons nach der Zeile „Zugriff von …“.
 
 **Gut zu wissen**
 
@@ -1474,12 +1475,34 @@ Diese Daten aus der Datei fallen auf einen Feiertag. Das ist nur ein Hinweis, ü
 <!-- /hinweis -->
 
 - Gilt bei dir ein Feiertag nur in manchen Orten, wähle den passenden Eintrag, zum Beispiel „Bayern – mit Mariä Himmelfahrt“ oder „Sachsen – mit Fronleichnam“. Welche Feiertage in deinem Ort gelten, erfährst du bei deiner Gemeinde.
-- Feiertage sperren nichts. Du kannst an jedem Tag buchen.
-- Verschoben werden Termine nur an Wochenenden und Bankfeiertagen. Das sind die Tage, an denen der Zahlungsverkehr der Banken ruht.
 - Das Programm berechnet die Feiertage selbst. Eine Internetverbindung ist nicht nötig.
-- Gedenktage und Schulferien markiert das Programm nicht.
 
-**Siehe auch:** [Wann wird gebucht?](#wiederkehrend.automatik), [Buchungsliste filtern](#buchungen.liste)
+**Siehe auch:** [Feiertage und Buchungstermine](#admin.feiertage-termine), [Buchungsliste filtern](#buchungen.liste)
+
+### Feiertage und Buchungstermine
+<!-- kapitel: admin.feiertage-termine -->
+<!-- stichworte: Feiertag, Bankfeiertag, Werktag, verschieben, Termin, Sonntag, Fronleichnam -->
+
+**Wofür?** Du verstehst, warum ein Feiertag manchmal einen Termin verschiebt und manchmal nicht.
+
+**So geht's**
+
+1. Das Programm kennt zwei Arten von Feiertagen: die Feiertage deines Bundeslands und die Bankfeiertage.
+2. Die Feiertage deines Bundeslands markiert es nur. Du siehst einen Hinweis unter dem Datum und ein „F“ in der Buchungsliste.
+3. Bankfeiertage verschieben Termine aus Vorlagen, Darlehen und Altersvorsorge. Fällt ein Termin auf einen Bankfeiertag oder ein Wochenende, bucht das Programm am Werktag davor.
+4. Bankfeiertage sind in ganz Deutschland gleich: Neujahr, Karfreitag, Ostermontag, 1. Mai, 25. und 26. Dezember.
+
+**Gut zu wissen**
+
+- Beispiel Nordrhein-Westfalen: Fronleichnam ist ein Feiertag, aber kein Bankfeiertag. Ein Termin an Fronleichnam bleibt auf dem Tag und bekommt nur einen Hinweis.
+- Ein Termin am 1. Januar wird am letzten Werktag des Vorjahres gebucht.
+- Auch ein Feiertag an einem Sonntag wird markiert. Verschoben wird der Termin dann wegen des Sonntags.
+- Ob deine Bank an einem regionalen Feiertag bucht, ist von Bank zu Bank verschieden. Kommt eine Zahlung an einem anderen Tag, ändere das Datum im Protokoll.
+- Was du selbst buchst, verschiebt das Programm nie.
+- Ein Wechsel des Bundeslands ändert nur die Markierungen, keine Buchung und keinen Termin.
+- Feiertage, die nur in einzelnen Orten gelten, wählst du über Einträge wie „Bayern – Stadt Augsburg“. Schulferien und Gedenktage markiert das Programm nicht.
+
+**Siehe auch:** [Feiertage](#admin.feiertage), [Wann wird gebucht?](#wiederkehrend.automatik), [Protokoll prüfen](#plan.protokoll)
 
 ### Serverzeit
 <!-- kapitel: admin.serverzeit -->

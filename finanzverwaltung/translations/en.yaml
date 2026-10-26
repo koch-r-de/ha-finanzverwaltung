@@ -1,0 +1,7 @@
+configuration:
+  herkunft_pruefen:
+    name: Check access within the internal network
+    description: >-
+      "protokoll" logs every new source address once, "sperren" only allows
+      Home Assistant itself (sidebar, Siri) and rejects other add-ons,
+      "aus" disables the check.

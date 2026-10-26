@@ -9,6 +9,7 @@ klassischen Desktop-Anwendung, auch wenn technisch ein lokaler
 Webserver dahintersteht.
 """
 from datetime import date, datetime
+import logging
 import os
 import io
 import re
@@ -17,7 +18,7 @@ from typing import Optional
 from dateutil.relativedelta import relativedelta
 from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from typing import Annotated
 
@@ -75,8 +76,47 @@ class PfadNormalisierenMiddleware:
         await self.app(scope, receive, send)
 
 
+class HerkunftPruefenMiddleware:
+    """Befund Q (2.6.2): Das Add-on lauscht im internen Netz von Home
+    Assistant auf 0.0.0.0:8099. Ohne Prüfung könnte jedes andere Add-on
+    über den Hostnamen alle Daten lesen und ändern. Erlaubt sind nur der
+    Ingress-Proxy des Supervisors (172.30.32.2, Empfehlung der Add-on-Doku),
+    Home Assistant selbst (rest_command/rest für Siri, angenommen
+    172.30.32.1) und lokale Aufrufe.
+
+    Modus aus FINANZAPP_HERKUNFT_PRUEFEN (Add-on-Option „herkunft_pruefen“):
+      aus        keine Prüfung (Desktop-Modus, Tests)
+      protokoll  nichts sperren, jede neue Herkunftsadresse einmal ins
+                 Protokoll schreiben (zum Nachsehen vor dem Scharfschalten)
+      sperren    fremde Herkunft mit 403 abweisen und protokollieren
+    """
+    ERLAUBT = {"172.30.32.2", "172.30.32.1", "127.0.0.1", "::1"}
+
+    def __init__(self, app):
+        self.app = app
+        self.gesehen: set[str] = set()
+
+    async def __call__(self, scope, receive, send):
+        modus = os.environ.get("FINANZAPP_HERKUNFT_PRUEFEN", "aus")
+        if scope["type"] != "http" or modus not in ("protokoll", "sperren"):
+            return await self.app(scope, receive, send)
+        herkunft = (scope.get("client") or ("?", 0))[0]
+        erlaubt = herkunft in self.ERLAUBT
+        if herkunft not in self.gesehen:
+            self.gesehen.add(herkunft)
+            LOG_ZUGRIFF.info("Zugriff von %s auf %s: %s", herkunft, scope.get("path", ""),
+                             "erlaubt" if erlaubt else ("gesperrt" if modus == "sperren" else "wäre gesperrt"))
+        if erlaubt or modus != "sperren":
+            return await self.app(scope, receive, send)
+        antwort = JSONResponse({"detail": "Zugriff nur über Home Assistant."}, status_code=403)
+        await antwort(scope, receive, send)
+
+
+LOG_ZUGRIFF = logging.getLogger("app.zugriff")   # unter "app", damit es im Add-on-Protokoll erscheint
+
 app = FastAPI(title="Private Finanzverwaltung")
 app.add_middleware(PfadNormalisierenMiddleware)
+app.add_middleware(HerkunftPruefenMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 

@@ -102,8 +102,9 @@ with sync_playwright() as p:
     pruef("Hilfe: Inhaltsverzeichnis mit allen Kapiteln", page.locator("#hilfe-inhalt a").count() == len(hilfe["kapitel"]))
     page.locator('#hilfe-inhalt a[data-anker="admin.feiertage"]').click(); page.wait_for_timeout(500)
     pruef("Hilfe: Inhaltsverzeichnis springt zum Kapitel", page.locator("#hilfe-k-admin\\.feiertage").bounding_box()["y"] < 300)
-    page.locator("#hilfe-k-admin\\.feiertage a", has_text="Wann wird gebucht?").click(); page.wait_for_timeout(500)
-    pruef("Hilfe: Verweis „Siehe auch“ springt", page.locator("#hilfe-k-wiederkehrend\\.automatik").bounding_box()["y"] < 300)
+    # Seit 2.6.2 verweist „Feiertage“ auf das Unterkapitel „Feiertage und Buchungstermine“
+    page.locator("#hilfe-k-admin\\.feiertage a", has_text="Feiertage und Buchungstermine").click(); page.wait_for_timeout(500)
+    pruef("Hilfe: Verweis „Siehe auch“ springt", page.locator("#hilfe-k-admin\\.feiertage-termine").bounding_box()["y"] < 300)
     page.fill("#hilfe-suche", "Trägerkonto Entnahme"); page.wait_for_timeout(600)
     treffer = page.locator(".hilfe-treffer")
     pruef("Suche: Treffer mit Auszug und Markierung", treffer.count() >= 1 and page.locator(".hilfe-auszug mark").count() >= 1,
