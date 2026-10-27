@@ -2,6 +2,12 @@
 
 Ausführlich zu jeder Version: DOCS.md, Abschnitte „Neu in Version …“.
 
+## 2.6.3
+
+- Korrektur: In der Schnellbuchung buchte die Eingabetaste sofort, der Betrag verschwand (Issue #4). Sie springt jetzt ins nächste Feld, die Meldung „Gebucht“ steht oben und bleibt.
+- Korrektur: Die Schnellbuchung belegte die Kategorie still mit der ersten der Liste vor, Regeln griffen dort nie (Befund R).
+- Schnellbuchung: alle Felder ohne Aufklappen sichtbar, Beschreibung vor Kategorie, Kategorie wird beim Tippen der Beschreibung über die Regeln vorausgewählt.
+
 ## 2.6.2
 
 - Sicherheit: Herkunftsprüfung im internen Netz von Home Assistant, Option „Zugriff im internen Netz prüfen“ (Standard: nur protokollieren), andere Add-ons lassen sich damit aussperren (Befund Q).

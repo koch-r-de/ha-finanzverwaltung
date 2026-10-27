@@ -1,5 +1,5 @@
 # Hilfe zur Finanzverwaltung
-Programmversion: 2.6.2
+Programmversion: 2.6.3
 
 ## Erste Schritte
 <!-- kapitel: erste-schritte -->
@@ -1051,7 +1051,7 @@ Unterwegs buchst du am schnellsten mit der Schnellbuchung oder per Sprachbefehl.
 
 ### Schnellbuchung nutzen
 <!-- kapitel: schnellbuchung.nutzen -->
-<!-- stichworte: Schnellbuchung, Handy, Rechnen im Betragsfeld -->
+<!-- stichworte: Schnellbuchung, Handy, Rechnen im Betragsfeld, Kategorie automatisch, Eingabetaste -->
 
 **Wofür?** Eine schlanke Eingabeseite für das Handy. Du buchst in wenigen Sekunden.
 
@@ -1059,20 +1059,26 @@ Unterwegs buchst du am schnellsten mit der Schnellbuchung oder per Sprachbefehl.
 
 1. Öffne die Schnellbuchung, zum Beispiel über ihren eigenen Eintrag in der Seitenleiste von Home Assistant.
 2. Trag den „Betrag (€)“ ein. Du darfst rechnen, zum Beispiel 12,50+8,30.
-3. Wähle „Konto“ und „Kategorie“ und schreib bei Bedarf eine „Beschreibung“.
-4. Unter „Weitere Angaben“ findest du „Buchungstyp“, „Datum“, „Zielkonto“ und „Sparziel zuordnen“.
-5. Klicke auf „Speichern“. Mit „Speichern & weiter“ bleiben Konto und Kategorie für die nächste Buchung stehen.
+3. Wähle das „Konto“.
+4. Schreib eine „Beschreibung“, zum Beispiel „Wochenmarkt“. Passt eine deiner Regeln, wählt das Programm die „Kategorie“ sofort aus. Darunter steht dann „automatisch erkannt“.
+5. Passt keine Regel, wähle die „Kategorie“ selbst.
+6. Prüfe „Buchungstyp“ und „Datum“. Bei „Übertragung“ erscheinen „Zielkonto“ und „Sparziel zuordnen“.
+7. Tippe auf „Speichern“. Mit „Speichern & weiter“ springt der Cursor danach gleich wieder ins Feld „Betrag (€)“.
 
 **Gut zu wissen**
 
-- Die Seite merkt sich das zuletzt genutzte Konto und die Kategorie.
+- Die Eingabetaste bucht nicht. Sie springt ins nächste Feld. Gebucht wird nur mit „Speichern“ oder „Speichern & weiter“.
+- Ohne Kategorie bucht die Seite nicht und zeigt einen Hinweis.
+- Hast du die Kategorie selbst gewählt, ändert eine Regel sie nicht mehr. Wählst du wieder „– bitte wählen –“, greifen die Regeln erneut.
+- Die Meldung „Gebucht“ steht oben und bleibt, bis du den nächsten Betrag eingibst.
+- Die Seite merkt sich das zuletzt genutzte Konto.
 - Deine Siri-Favoriten stehen in der Kategorie-Auswahl ganz oben.
 - Gibt es am selben Tag schon den gleichen Betrag auf dem Konto, erscheint ein Hinweis auf eine mögliche Doppelbuchung.
 - Ist das gewählte Datum ein Feiertag, steht ein Hinweis unter dem Feld „Datum“.
 
 ![Die Schnellbuchung](bilder/schnellbuchung.nutzen.png)
 
-**Siehe auch:** [Schnellbuchung in der Seitenleiste](#schnellbuchung.seitenleiste), [Siri-Favoriten festlegen](#schnellbuchung.favoriten)
+**Siehe auch:** [Schnellbuchung in der Seitenleiste](#schnellbuchung.seitenleiste), [Siri-Favoriten festlegen](#schnellbuchung.favoriten), [Automatische Kategorisierung](#admin.regeln)
 
 ### Schnellbuchung in der Seitenleiste
 <!-- kapitel: schnellbuchung.seitenleiste -->
@@ -1396,8 +1402,9 @@ Enthält die Beschreibung einer Buchung das Muster, setzt das Programm die Kateg
 <!-- /hinweis -->
 
 - Das hilft vor allem bei Siri, wenn du keine Kategorie mitschickst.
+- In der Schnellbuchung wählt die Regel die Kategorie schon beim Tippen der Beschreibung aus.
 
-**Siehe auch:** [Siri: Kurzbefehl anlegen](#schnellbuchung.siri-kurzbefehl)
+**Siehe auch:** [Siri: Kurzbefehl anlegen](#schnellbuchung.siri-kurzbefehl), [Schnellbuchung nutzen](#schnellbuchung.nutzen)
 
 ### Vorzeichen prüfen
 <!-- kapitel: admin.vorzeichen -->

@@ -138,6 +138,51 @@ neuen Darlehen); die Karte zeigt daraus den noch nicht ausgezahlten Rest.
 Bestehende Darlehen bleiben ohne Summe, bis sie über "Ändern" nachgetragen
 wird.
 
+## Neu in Version 2.6.3
+
+**Issue #4, Schnellbuchung bucht bei der Eingabetaste (gemeldet vom Anwender,
+besteht seit Einführung der Schnellbuchung):** Nach Eingabe des Betrags
+verschwand dieser wieder, der Cursor blieb im Feld „Betrag (€)“. Ursache:
+Alle Felder lagen in einem `<form>` mit einem Submit-Knopf, die Eingabetaste
+bzw. „Return“ der Bildschirmtastatur schickte das Formular implizit ab. Es
+entstand jedes Mal eine Buchung mit vorbelegtem Konto, vorbelegter Kategorie
+und ohne Beschreibung. Die Bestätigung stand unterhalb der Knöpfe, hinter der
+Tastatur, und verschwand nach 8 Sekunden. Behebung: Die Eingabetaste springt
+ins nächste sichtbare Feld (im letzten Feld schließt sie die Tastatur),
+„Speichern“ ist kein Submit-Knopf mehr, ein Submit-Ereignis bucht nie. Die
+Meldung steht oberhalb des Formulars und bleibt, bis der nächste Betrag
+eingegeben wird. Eine Warnung verschwindet bei der nächsten Eingabe.
+
+**Befund R (gefunden beim Nachstellen von #4):** Die Kategorie-Auswahl der
+Schnellbuchung hatte keine leere Option. Ohne gemerkte Kategorie stand die
+erste Kategorie der Liste darin (in den Testdaten die Wurzel „Ausgaben“).
+Weil dadurch immer eine Kategorie mitging, griffen die Kategorisierungsregeln
+in der Schnellbuchung nie, der Server wendet sie nur ohne Kategorie an.
+Behebung: Option „– bitte wählen –“, ohne Kategorie bucht die Seite nicht
+(außer bei Übertragungen) und springt mit Hinweis zur Kategorie. Die Seite
+merkt sich nur noch das Konto, nicht mehr die Kategorie.
+
+**Schnellbuchung: alle Felder auf einen Blick, Kategorie aus der
+Beschreibung:** „Weitere Angaben“ entfällt. Reihenfolge: Betrag, Konto,
+Beschreibung, Kategorie, dann Buchungstyp und Datum nebeneinander; Zielkonto
+und Sparziel erscheinen nur bei „Übertragung“, weil sie nur dort gelten. Beim
+Tippen der Beschreibung fragt die Seite nach 250 ms `GET
+/api/regeln/vorschlag` ab (erste passende Regel nach Priorität, Teiltext ohne
+Groß- und Kleinschreibung) und setzt die Kategorie mit dem Hinweis
+„automatisch erkannt“. Entscheidungen: Hat der Anwender die Kategorie selbst
+gewählt, ändert die Regel sie nicht mehr; „– bitte wählen –“ gibt sie wieder
+frei. Passt keine Regel mehr, fällt eine automatisch gesetzte Kategorie auf
+„– bitte wählen –“ zurück. Kategorienamen werden nicht durchsucht, Grundlage
+sind nur die Regeln. Veraltete Antworten werden über eine laufende Nummer
+verworfen. Nach dem Buchen wird die Kategorie zurückgesetzt.
+
+Tests: neue Reihen `v263_test.py` (Vorschlags-Schnittstelle, Priorität,
+leere Eingabe, Sonderzeichen, Server-Regel bei Buchung ohne Kategorie) und
+`ui263_test.py` (iPhone-Ansicht: Sichtbarkeit und Reihenfolge, #4, Befund R,
+Vorauswahl und Vorrang, Meldung, Übertragung). Gegenprobe von `ui263` mit dem
+Code von 2.6.2 scheitert wie erwartet. Das Bildwerkzeug legt dafür eine
+Demo-Regel „Wochenmarkt“ an.
+
 ## Neu in Version 2.6.2
 
 **Befund Q (gefunden bei der Recherche zu Verschlüsselung und Passwortschutz,

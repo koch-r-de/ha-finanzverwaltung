@@ -110,6 +110,7 @@ def demo_daten_anlegen():
                                                "auszahlungsart": "rente", "auszahlung_kategorie_id": kat["Rente"],
                                                "rente_garantiert_betrag": 190, "rente_voraussichtlich_betrag": 240}))
         ok(c.post("/api/regeln", json={"muster": "Tankstelle", "kategorie_id": kat["Kraftstoff"], "prioritaet": 100}))
+        ok(c.post("/api/regeln", json={"muster": "Wochenmarkt", "kategorie_id": kat["Lebensmittel/Verpflegung"], "prioritaet": 100}))
 
 
 def freier_port() -> int:
@@ -265,6 +266,7 @@ def fotos(port: int):
         m.clock.install(time=zeit)
         m.goto(basis + "schnellbuchung"); m.wait_for_timeout(1200)
         m.fill("#sb-betrag", "23,40"); m.fill("#sb-form [name=beschreibung]", "Wochenmarkt")
+        m.wait_for_timeout(800)   # Vorauswahl der Kategorie aus der Regel (seit 2.6.3)
         speichern(m.screenshot(), "schnellbuchung.nutzen")
         br.close()
 

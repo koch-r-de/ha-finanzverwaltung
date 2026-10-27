@@ -169,7 +169,7 @@ with sync_playwright() as p:
 
     # ─── Schnellbuchung ────────────────────────────────────────────────
     page.goto(BASIS + "schnellbuchung"); page.wait_for_timeout(1200)
-    page.click("#sb-details-schalter"); page.wait_for_timeout(300)
+    # seit 2.6.3 sind alle Felder ohne Aufklappen sichtbar
     page.fill("#sb-datum-feld", "2026-12-25"); page.wait_for_timeout(500)
     pruef("Schnellbuchung: Hinweis unter „Datum“", page.is_visible("#sb-feiertag")
           and page.inner_text("#sb-feiertag") == "25.12.2026 ist ein Feiertag (1. Weihnachtstag).")

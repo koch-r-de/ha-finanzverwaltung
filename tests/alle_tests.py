@@ -36,6 +36,7 @@ FACHLICH = [
     ("v26", "v26_test.py", "v21", []),
     ("v261", "v261_test.py", "v21", []),
     ("v262", "v262_test.py", "v21", []),
+    ("v263", "v263_test.py", "v21", []),
 ]
 OBERFLAECHE = [
     ("ui", "ui_test.py", "v191", []),
@@ -44,6 +45,7 @@ OBERFLAECHE = [
     ("ui23", "ui23_test.py", "ausgabe:uibasis", []),
     ("ui24", "ui24_test.py", "ausgabe:uibasis", [str(DATEN / "v21" / "finanzdaten.db")]),
     ("ui26", "ui26_test.py", "v191", []),
+    ("ui263", "ui263_test.py", "v191", []),
 ]
 
 # Reihen, die die Bundesland-Abfrage selbst prüfen
