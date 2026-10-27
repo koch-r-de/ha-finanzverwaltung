@@ -7,6 +7,7 @@ Ausführlich zu jeder Version: DOCS.md, Abschnitte „Neu in Version …“.
 - Neu: Die Schnellbuchung in der Seitenleiste ist eine Integration, die HACS installiert und aktualisiert. Kein Kopieren und kein Eintrag in der `configuration.yaml` mehr. Neue Adresse `/finanzen-schnellbuchung`, Umstieg siehe `ha-integration/README-HA-Integration.md`.
 - Korrektur: Benutzer ohne Administratorrechte sahen bei einer Installation aus dem Repository nur eine Fehlermeldung (Befund S).
 - Korrektur: Die Schnellbuchung in der Seitenleiste legte keine eigene Ingress-Sitzung an und konnte nach 15 Minuten „401: Unauthorized“ zeigen (Befund T).
+- Dokumentation: veraltete Angaben zu Feiertagen im README und zur Schnellbuchung in DOCS.md korrigiert (Befund U).
 
 ## 2.6.4
 

@@ -62,16 +62,23 @@ Umzug vom lokalen Add-on auf die Installation aus dem Repository: siehe
 ## Schnellbuchung
 
 Unter `/schnellbuchung` liefert das Add-on eine mobiloptimierte
-Eingabemaske: Betrag, Konto, Kategorie und Beschreibung immer sichtbar,
-Buchungstyp/Datum/Zielkonto/Sparziel hinter "Weitere Angaben". Neben
-"Speichern" gibt es "Speichern & weiter", das Konto und Kategorie
-beibehält und nur Betrag und Beschreibung leert.
+Eingabemaske. Alle Felder sind ohne Aufklappen sichtbar, in der Reihenfolge
+Betrag, Konto, Beschreibung, Kategorie, dann Buchungstyp und Datum
+nebeneinander. Zielkonto und Sparziel erscheinen nur bei einer Übertragung.
+Beim Tippen der Beschreibung wählt die Seite die Kategorie über die
+Kategorisierungsregeln vor, eine selbst gewählte Kategorie hat Vorrang. Ohne
+Kategorie bucht die Seite nicht, außer bei einer Übertragung. Die Eingabetaste
+springt ins nächste Feld, gebucht wird nur mit "Speichern" oder "Speichern &
+weiter". Beide leeren danach Betrag, Beschreibung und Kategorie, "Speichern &
+weiter" setzt den Cursor zurück in den Betrag. Die Meldung "Gebucht" steht
+oberhalb des Formulars und bleibt bis zum nächsten Betrag (Begründungen in
+„Neu in Version 2.6.3“).
 
-Komfortfunktionen: Das zuletzt genutzte Konto und die zuletzt genutzte
-Kategorie werden im Browser gemerkt und vorbelegt. Im Betragsfeld darf
-gerechnet werden ("12,50+8,30" ergibt 20,80). Existiert am selben Tag
-auf demselben Konto bereits ein gleicher Betrag, erscheint ein Hinweis
-auf ein mögliches Duplikat – ohne die Buchung zu blockieren.
+Komfortfunktionen: Das zuletzt genutzte Konto wird im Browser gemerkt und
+vorbelegt. Im Betragsfeld darf gerechnet werden ("12,50+8,30" ergibt 20,80).
+Existiert am selben Tag auf demselben Konto bereits ein gleicher Betrag,
+erscheint ein Hinweis auf ein mögliches Duplikat, ohne die Buchung zu
+blockieren. Ist das Datum ein Feiertag, steht ein Hinweis unter dem Feld.
 
 Für einen eigenen Eintrag in der Home-Assistant-Seitenleiste (seit 2.7 als
 Integration über HACS) und für Siri-Kurzbefehle siehe
@@ -226,6 +233,12 @@ laden (Befund S, darunter auch Höhe und Felder). Die angegebene
 Mindestversion 2025.1 in `hacs.json` ist aus den genutzten Schnittstellen
 abgeleitet, getestet ist nur 2026.2.3. Die deutschen Beschriftungen in HACS in
 der Anleitung sind nicht am System geprüft.
+
+**Befund U (gefunden beim Durchsehen der Texte für 2.7):** Zwei Texte waren
+veraltet. `README.md` nannte die Feiertage als nur für Nordrhein-Westfalen
+gültig, seit 2.6 ist das Bundesland wählbar. Der Abschnitt „Schnellbuchung“
+oben beschrieb noch „Weitere Angaben“ und die gemerkte Kategorie, also den
+Stand vor 2.6.3. Beide Texte sind nachgezogen, das Programm ändert sich nicht.
 
 ## Neu in Version 2.6.4
 

@@ -7,8 +7,9 @@ Schnellbuchung für unterwegs, Buchen per Siri, XLSX-Export und -Import, eine
 eingebaute Hilfe mit PDF-Handbuch sowie Backups mit Wiederherstellen.
 
 Alles läuft lokal in Home Assistant. Die Daten liegen in einer SQLite-Datenbank
-im Add-on und verlassen das Gerät nicht. Oberfläche, Hilfe und Feiertage sind
-deutsch, die Feiertage gelten für Nordrhein-Westfalen.
+im Add-on und verlassen das Gerät nicht. Oberfläche und Hilfe sind deutsch.
+Feiertage werden für das beim ersten Start gewählte Bundesland markiert,
+fällige Termine verschieben sich nach dem Bankenkalender (TARGET).
 
 ## Installation
 
