@@ -1,5 +1,5 @@
 # Hilfe zur Finanzverwaltung
-Programmversion: 2.6.4
+Programmversion: 2.7
 
 ## Erste Schritte
 <!-- kapitel: erste-schritte -->
@@ -1082,36 +1082,28 @@ Unterwegs buchst du am schnellsten mit der Schnellbuchung oder per Sprachbefehl.
 
 ### Schnellbuchung in der Seitenleiste
 <!-- kapitel: schnellbuchung.seitenleiste -->
-<!-- stichworte: Seitenleiste Home Assistant, panel_custom -->
+<!-- stichworte: Seitenleiste Home Assistant, HACS, Integration, panel_custom, Reparaturen -->
 
 **Wofür?** Die Schnellbuchung bekommt einen eigenen Eintrag in der Seitenleiste von Home Assistant.
 
 **So geht's**
 
-1. Öffne die Samba-Freigabe von Home Assistant und dort den Ordner config.
-2. Lege dort den Ordner www an, falls es ihn noch nicht gibt.
-3. Kopiere die Datei finanzen-schnellbuchung.js aus dem Ordner ha-integration des Add-ons nach config/www.
-4. Ergänze in der Datei configuration.yaml:
+1. Öffne HACS, oben rechts das Menü und „Benutzerdefinierte Repositorys“.
+2. Trage https://github.com/koch-r-de/ha-finanzverwaltung ein, wähle den Typ „Integration“ und füge es hinzu.
+3. Suche in HACS nach „Finanzverwaltung Schnellbuchung“ und wähle „Herunterladen“.
+4. Starte Home Assistant neu: Einstellungen, System, Symbol oben rechts, „Home Assistant neu starten“.
+5. Öffne Einstellungen, „Geräte & Dienste“, „Integration hinzufügen“ und wähle „Finanzverwaltung“.
+6. In der Seitenleiste erscheint „Schnellbuchung“.
 
-```yaml
-panel_custom:
-  - name: finanzen-schnellbuchung-panel
-    sidebar_title: Schnellbuchung
-    sidebar_icon: mdi:cash-plus
-    url_path: schnellbuchung
-    module_url: /local/finanzen-schnellbuchung.js?v=2.6.4
-    embed_iframe: false
-    require_admin: false
-```
-
-5. Starte Home Assistant neu: Einstellungen, System, Symbol oben rechts, „Home Assistant neu starten“.
-6. Gibt es eine neue Fassung von finanzen-schnellbuchung.js, kopiere sie wie in Schritt 3, setze die Zahl hinter ?v= auf die neue Programmversion und starte Home Assistant neu. So lädt auch die App auf dem Handy die neue Datei.
+Updates meldet HACS. Installiere sie und starte Home Assistant neu.
 
 **Gut zu wissen**
 
-- Der Eintrag funktioniert auch nach einer Neuinstallation des Add-ons weiter.
-- Die Schnellbuchung füllt die ganze Höhe neben der Seitenleiste. Siehst du nur das Feld „Betrag (€)“ und darunter eine graue Fläche, ist noch eine alte Fassung von finanzen-schnellbuchung.js aktiv. Ersetze sie wie in Schritt 6.
-- Die Seite findet das Add-on von selbst, ob es lokal oder aus dem Repository installiert ist. Zeigt sie trotzdem eine Fehlermeldung, trage in finanzen-schnellbuchung.js ganz oben bei ADDON_SLUG die Kennung des Add-ons ein. Du findest sie in der Adresszeile des Browsers, wenn du in Home Assistant die Seite der App öffnest, zum Beispiel …/addon/local_finanzverwaltung/info.
+- Du brauchst HACS. Ohne HACS kopierst du den Ordner custom_components/finanzverwaltung aus dem Repository nach config/custom_components und machst mit Schritt 4 weiter.
+- Hattest du die Schnellbuchung früher über panel_custom in der configuration.yaml eingetragen, zeigt Home Assistant unter „Reparaturen“ einen Hinweis. Lösche dann den Eintrag mit finanzen-schnellbuchung-panel in der configuration.yaml und die Datei config/www/finanzen-schnellbuchung.js und starte neu. Die neue Adresse ist /finanzen-schnellbuchung.
+- Der Eintrag funktioniert auch für Benutzer ohne Administratorrechte und auch nach einer Neuinstallation des Add-ons. Hast du das Add-on neu installiert, starte Home Assistant einmal neu.
+- Die Schnellbuchung füllt die ganze Höhe neben der Seitenleiste und bleibt benutzbar, auch wenn sie länger offen liegt.
+- Die Schritt-für-Schritt-Anleitung mit allen Einzelheiten steht im Repository unter ha-integration/README-HA-Integration.md.
 
 **Siehe auch:** [Schnellbuchung nutzen](#schnellbuchung.nutzen)
 

@@ -11,8 +11,9 @@ logs/
 __pycache__/
 *.pyc
 
-# Testausgaben
+# Testausgaben und Testumgebung mit Home Assistant
 tests/ausgabe/
+tests/.ha-venv
 
 # Arbeitsunterlagen, die nicht ins Repository gehören
 FinanzverwaltungZusammenfassung_*.docx

@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Finanzverwaltung",
+        "description": "Legt den Eintrag „Schnellbuchung“ in der Seitenleiste an. Voraussetzung ist das Add-on „Private Finanzverwaltung“."
+      }
+    },
+    "abort": {
+      "kein_supervisor": "Die Schnellbuchung braucht Home Assistant OS oder Supervised, weil sie das Add-on über Ingress einbettet.",
+      "single_instance_allowed": "Die Finanzverwaltung ist bereits eingerichtet."
+    }
+  },
+  "issues": {
+    "alter_seitenleisten_eintrag": {
+      "title": "Alter Eintrag „Schnellbuchung“ in der configuration.yaml",
+      "description": "Die Integration legt die Schnellbuchung jetzt selbst an. Unter {adressen} hängt noch der alte Eintrag aus der configuration.yaml. Entferne dort den Block unter panel_custom mit finanzen-schnellbuchung-panel und lösche config/www/finanzen-schnellbuchung.js. Starte Home Assistant danach neu, dann verschwindet dieser Hinweis."
+    }
+  }
+}

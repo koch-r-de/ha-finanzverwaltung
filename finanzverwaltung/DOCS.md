@@ -73,8 +73,9 @@ gerechnet werden ("12,50+8,30" ergibt 20,80). Existiert am selben Tag
 auf demselben Konto bereits ein gleicher Betrag, erscheint ein Hinweis
 auf ein mögliches Duplikat – ohne die Buchung zu blockieren.
 
-Für einen eigenen Eintrag in der Home-Assistant-Seitenleiste und für
-Siri-Kurzbefehle siehe `ha-integration/README-HA-Integration.md`.
+Für einen eigenen Eintrag in der Home-Assistant-Seitenleiste (seit 2.7 als
+Integration über HACS) und für Siri-Kurzbefehle siehe
+`ha-integration/README-HA-Integration.md`.
 
 ## Automatische Kategorisierung
 
@@ -137,6 +138,94 @@ das Feld "Darlehenssumme" (vertraglich vereinbarter Betrag, Pflicht bei
 neuen Darlehen); die Karte zeigt daraus den noch nicht ausgezahlten Rest.
 Bestehende Darlehen bleiben ohne Summe, bis sie über "Ändern" nachgetragen
 wird.
+
+## Neu in Version 2.7
+
+**Schnellbuchung in der Seitenleiste als Integration über HACS (Wunsch des
+Anwenders):** Bis 2.6.4 musste man `finanzen-schnellbuchung.js` von Hand nach
+`config/www` kopieren, `panel_custom` in die `configuration.yaml` eintragen und
+bei jeder neuen Fassung die Datei erneut kopieren und `?v=` hochzählen. Wer nur
+über GitHub installiert, hatte keine Anleitung, woher die Datei kommt, und ein
+Add-on-Update brachte sie nie mit. Erwogen wurden drei Wege: nur besser
+dokumentieren, das Add-on legt die Datei selbst ab (braucht Schreibrecht auf
+die ganze HA-Konfiguration), oder eine eigene Integration. Entschieden ist die
+Integration, weil HACS sie installiert und aktualisiert und die
+`configuration.yaml` unberührt bleibt.
+
+Aufbau: `custom_components/finanzverwaltung/` im selben Repository, `hacs.json`
+im Wurzelordner, Markenbild in `brand/icon.png` (Home Assistant liest es seit
+der Brands-Komponente aus dem Integrationsordner, HACS verlangt es). Die
+Integration meldet die Panel-Datei unter `/finanzverwaltung_dateien/` an
+(`hass.http.async_register_static_paths`) und trägt das Panel mit
+`panel_custom.async_register_panel` ein. Diese Funktion beschreibt die
+Entwicklerdoku nicht, sie ist aber im Quelltext von Home Assistant vorhanden und
+wird von verbreiteten Integrationen genutzt. Die Versionsnummer aus dem
+Manifest hängt als `?v=` an der Adresse, dadurch laden Browser und App nach
+einem Update die neue Fassung ohne Handarbeit. Einrichtung ohne Eingaben über
+„Geräte & Dienste“, nur einmal möglich, ohne Supervisor bricht sie mit Hinweis
+ab.
+
+Übergang: Das Panel hat die neue Adresse `/finanzen-schnellbuchung` und den
+neuen Elementnamen `finanzverwaltung-schnellbuchung`. Home Assistant lässt
+keine zwei Panels mit derselben Adresse zu, und welches zuerst geladen wird,
+hängt von der Startreihenfolge ab. Ein gleicher Elementname hätte zudem die
+alte Fassung festhalten können, wenn beide Panels in einer Sitzung geöffnet
+werden. Solange der alte Eintrag aus der `configuration.yaml` (erkannt am
+Elementnamen `finanzen-schnellbuchung-panel` oder an der Datei
+`finanzen-schnellbuchung.js`) besteht, zeigt Home Assistant unter
+„Reparaturen“ einen Hinweis mit den Schritten. Geprüft wird nach dem Start von
+Home Assistant.
+
+`ha-integration/finanzen-schnellbuchung.js` entfällt, ebenso `ui264_test.py`
+(ersetzt durch `ui27_test.py`). Wer nicht umsteigt, behält seine alte Kopie
+in `config/www`, bekommt aber keine Korrekturen mehr. Ohne HACS lässt sich der
+Ordner `custom_components/finanzverwaltung` von Hand kopieren. Zu jeder Version
+gibt es ab jetzt ein GitHub-Release mit Tag `vX.Y`, damit HACS Updates mit
+Versionsnummer anzeigt.
+
+**Befund S (gefunden beim Lesen des Quelltexts von Home Assistant für die
+Integration, besteht seit 2.5):** Benutzer ohne Administratorrechte sahen im
+Panel nur die Fehlermeldung, wenn das Add-on aus einem Repository installiert
+ist. Ursache: Das Panel fragte zuerst `local_finanzverwaltung` ab und suchte
+danach in der Liste aller Add-ons nach `…_finanzverwaltung`. Ohne Adminrecht
+erlaubt Home Assistant über `supervisor/api` aber nur die Ingress-Sitzung und
+die Abfrage eines namentlich bekannten Add-ons (`WS_NO_ADMIN_ENDPOINTS` in
+`homeassistant/components/hassio/websocket_api.py`), nicht die Liste.
+Behebung: Die Integration ermittelt die Kennung beim Start auf dem Server
+(Supervisor-Client, bei mehreren Treffern zählt nur ein laufendes Add-on) und
+gibt sie dem Panel in `panel.config.kennung` mit. Die alte Suche bleibt als
+Rückfall für Administratoren.
+
+**Befund T (gefunden ebenda, besteht seit Einführung des Panels):** Das Panel
+legte keine eigene Ingress-Sitzung an. Der Supervisor lässt eine Sitzung nach
+15 Minuten ohne Anfrage verfallen (`supervisor/ingress.py`). Wer
+„Schnellbuchung“ öffnete, ohne in den 15 Minuten davor „Finanzen“ geöffnet zu
+haben, oder das Panel länger offen liegen ließ, bekam „401: Unauthorized“ oder
+ein scheiterndes Speichern. Am System des Anwenders nicht beobachtet, aus dem
+Quelltext abgeleitet. Behebung nach dem Vorbild des Add-on-Panels von Home
+Assistant (`src/panels/app/ha-panel-app.ts` im Frontend): Beim Öffnen und beim
+Zurückkehren eine neue Sitzung anlegen und als Cookie für
+`/api/hassio_ingress/` setzen, jede Minute und beim Zurückholen der App
+verlängern, eine abgelaufene ersetzen. Zuerst mit den neueren Befehlen
+`supervisor/ingress/session` und `supervisor/ingress/validate_session`, bei
+„unknown_command“ über `supervisor/api`. Das Cookie ist im Panel nicht lesbar
+(eigener Pfad), deshalb merkt sich das Panel seine Sitzung selbst.
+
+Tests: `v27_test.py` (16 Prüfungen mit `pytest-homeassistant-custom-component`
+0.13.316, also Home Assistant 2026.2.3): Einrichtung mit Fehlerfällen, Panel
+mit Adresse, Version und Kennung, Kennungswahl, Auslieferung der Datei,
+Hinweis auf den alten Eintrag auch beim Start, Entfernen und Neuladen,
+Pflichtdateien, gleiche Versionen in Add-on, Hilfe und Integration. Beim
+Schreiben fiel dort auf, dass ein Startlistener nach dem Auslösen beim
+Entfernen einen Fehler warf, deshalb `async_at_started`. `ui27_test.py`
+(24 Prüfungen) bettet das Panel wie Home Assistant ein: Höhe und alle Felder
+wie seit 2.6.4, ohne Adminrecht, Sitzung mit Uhr-Attrappe, ältere
+Home-Assistant-Version. Gegenprobe mit dem Panel von 2.6.4: 16 von 24
+Prüfungen schlagen fehl. Das sind die zu Befund T und alle, die ohne Adminrecht
+laden (Befund S, darunter auch Höhe und Felder). Die angegebene
+Mindestversion 2025.1 in `hacs.json` ist aus den genutzten Schnittstellen
+abgeleitet, getestet ist nur 2026.2.3. Die deutschen Beschriftungen in HACS in
+der Anleitung sind nicht am System geprüft.
 
 ## Neu in Version 2.6.4
 

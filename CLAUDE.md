@@ -14,6 +14,13 @@ Oberfläche per Ingress in der Seitenleiste. Alle Daten liegen in einer
 SQLite-Datei unter `/data` im Container. Es gibt keine Cloud-Anbindung und
 soll auch keine geben.
 
+Dazu kommt seit 2.7 eine kleine Integration in
+`custom_components/finanzverwaltung/` (Installation über HACS, `hacs.json` im
+Wurzelordner). Sie legt den Seitenleisten-Eintrag „Schnellbuchung“ an, liefert
+dessen Panel-Datei `frontend/schnellbuchung-panel.js` aus und gibt ihm die
+Kennung des Add-ons mit. Das Panel bettet die Seite `/schnellbuchung` des
+Add-ons per Ingress ein und hält eine eigene Ingress-Sitzung am Leben.
+
 | Teil | Technik |
 | --- | --- |
 | Backend | FastAPI, eine Datei `app/main.py` mit allen Endpunkten unter `/api/...` |
@@ -21,7 +28,8 @@ soll auch keine geben.
 | Datenbank | SQLite, Schema in `app/schema.sql`, Migrationen in `app/core/db.py` |
 | Frontend | `app/static/index.html`, `app.js`, `style.css`: Vanilla JS ohne Build-Kette, Chart.js 4 mitgeliefert |
 | Hilfe | `app/hilfe/hilfe.md` (Markdown, eine Datei), daraus Hilfe-Ansicht, Hinweistexte und PDF-Handbuch |
-| Tests | `tests/`, fachlich mit FastAPI-TestClient, Oberfläche mit Playwright |
+| Integration | `custom_components/finanzverwaltung/`: Python für Home Assistant, Panel als Web-Komponente, Übersetzungen, `brand/icon.png` |
+| Tests | `tests/`, fachlich mit FastAPI-TestClient, Integration mit pytest in `tests/.ha-venv`, Oberfläche mit Playwright |
 
 ## Lokal starten
 
@@ -132,7 +140,9 @@ nach. Regeln:
 
 Die Versionsnummer steht synchron in `config.yaml` (`version`), im
 `Dockerfile` (`LABEL io.hass.version`, `ENV FINANZAPP_VERSION`,
-`ENV FINANZAPP_VERSION_DATUM`) und in der zweiten Zeile von `hilfe.md`. Dazu
+`ENV FINANZAPP_VERSION_DATUM`), in der zweiten Zeile von `hilfe.md` und im
+`manifest.json` der Integration (`v27_test.py` prüft das). Zu jeder Version ein
+GitHub-Release mit Tag `vX.Y`, damit HACS ein Update anzeigt. Dazu
 ein Abschnitt „Neu in Version X.Y“ in `DOCS.md` (mit Begründungen und
 gefundenen Fehlern) und ein kurzer Eintrag in `CHANGELOG.md`. Home Assistant
 erkennt ein Update nur an einer geänderten `version` in `config.yaml`.
@@ -176,7 +186,10 @@ sonst blockiert die Pflichtabfrage (`alle_tests.bundesland_vorbelegen`).
   Schlägt ein alter Test fehl, erst mit dem Code der Vorversion gegenprüfen.
 - Nichts doppelt pflegen: Hinweistexte nur in `hilfe.md`, Begründungen nur in
   `DOCS.md`.
-- Seiten, die eingebettet laufen (Schnellbuchung im Panel aus
-  `ha-integration/`), auch eingebettet testen (`ui264_test.py`, Lehre aus #4).
-  Änderungen an `ha-integration/` erreichen den Anwender nicht über das
-  Add-on-Update; Hilfe und README nennen dann den Kopierschritt.
+- Seiten, die eingebettet laufen (Schnellbuchung im Panel der Integration),
+  auch eingebettet testen (`ui27_test.py`, Lehre aus #4). Was Home Assistant
+  selbst tut (Rechte, Ingress-Sitzung, Reihenfolge beim Start), im Quelltext von
+  Core, Frontend und Supervisor nachlesen, nicht aus dem Verhalten schließen
+  (Lehre aus Befund S und T).
+- Die Integration erreicht den Anwender über HACS, nicht über das
+  Add-on-Update. Nur `ha-integration/` enthält reine Anleitungen.

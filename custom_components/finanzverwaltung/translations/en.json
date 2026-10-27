@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Finanzverwaltung",
+        "description": "Adds the “Schnellbuchung” (quick booking) entry to the sidebar. Requires the add-on “Private Finanzverwaltung”."
+      }
+    },
+    "abort": {
+      "kein_supervisor": "Quick booking requires Home Assistant OS or Supervised because it embeds the add-on via Ingress.",
+      "single_instance_allowed": "Finanzverwaltung is already set up."
+    }
+  },
+  "issues": {
+    "alter_seitenleisten_eintrag": {
+      "title": "Old “Schnellbuchung” entry in configuration.yaml",
+      "description": "The integration now adds quick booking itself. The old entry from configuration.yaml is still present at {adressen}. Remove the panel_custom block with finanzen-schnellbuchung-panel there and delete config/www/finanzen-schnellbuchung.js. Then restart Home Assistant and this notice disappears."
+    }
+  }
+}

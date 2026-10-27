@@ -20,6 +20,10 @@ deutsch, die Feiertage gelten für Nordrhein-Westfalen.
 
 Unterstützt: amd64 und aarch64 (z. B. Raspberry Pi 4/5 mit 64-Bit-HAOS).
 
+Optional bekommt die Schnellbuchung einen eigenen Eintrag in der Seitenleiste.
+Dafür dieses Repository zusätzlich in HACS als Integration hinzufügen, siehe
+[`ha-integration/README-HA-Integration.md`](ha-integration/README-HA-Integration.md).
+
 **Wichtig:** Eine Deinstallation löscht alle Daten. Vorher in der
 Administration „Datenbank herunterladen“.
 
@@ -30,7 +34,9 @@ Administration „Datenbank herunterladen“.
 | `finanzverwaltung/` | das Add-on (FastAPI, SQLite, HTML/CSS/JavaScript, Chart.js) |
 | `finanzverwaltung/DOCS.md` | Dokumentation mit allen Versionen |
 | `finanzverwaltung/CHANGELOG.md` | Änderungen je Version |
-| `ha-integration/` | Schnellbuchung als eigener Seitenleisten-Eintrag, Siri-Anleitung |
+| `custom_components/finanzverwaltung/` | Integration für HACS: Schnellbuchung als eigener Seitenleisten-Eintrag |
+| `hacs.json` | Angaben für HACS |
+| `ha-integration/` | Anleitung zur Integration und zu Siri |
 | `tests/` | fachliche Tests und Oberflächentests (Playwright) samt Testdatenbanken |
 | `werkzeuge/` | Werkzeug für die Bildschirmfotos der Hilfe |
 | `CLAUDE.md` | Hinweise für die Arbeit mit Claude Code |

@@ -1,62 +1,87 @@
 # Home-Assistant-Integration
 
 Zwei optionale Ergänzungen: ein eigener Seitenleisten-Eintrag für die
-Schnellbuchung und Siri-Kurzbefehle fürs iPhone/iPad.
+Schnellbuchung (Integration über HACS) und Siri-Kurzbefehle fürs iPhone/iPad.
 
 ---
 
 ## 1. Seitenleisten-Eintrag "Schnellbuchung"
 
-### Dateien kopieren
+Seit Version 2.7 legt die Integration **Finanzverwaltung** den Eintrag an.
+Sie wird über HACS installiert und aktualisiert. Die `configuration.yaml`
+bleibt unberührt.
 
-Über die Samba-Freigabe `\\<HA-IP>\config\`:
+### Voraussetzungen
 
-1. Ordner `www` anlegen, falls noch nicht vorhanden
-2. `finanzen-schnellbuchung.js` aus diesem Ordner nach `config/www/` kopieren
+- Home Assistant OS oder Supervised (die Schnellbuchung bettet das Add-on
+  über Ingress ein)
+- das Add-on „Private Finanzverwaltung“, installiert und gestartet
+- HACS (Gemeinschaftsprojekt, nicht Teil von Home Assistant, siehe
+  [hacs.xyz](https://hacs.xyz))
 
-### configuration.yaml ergänzen
+### Installation über HACS
 
-In `config/configuration.yaml` anhängen:
-
-```yaml
-panel_custom:
-  - name: finanzen-schnellbuchung-panel
-    sidebar_title: Schnellbuchung
-    sidebar_icon: mdi:cash-plus
-    url_path: schnellbuchung
-    module_url: /local/finanzen-schnellbuchung.js?v=2.6.4
-    embed_iframe: false
-    require_admin: false
-```
-
-Danach **Einstellungen → System → ⏻ → Home Assistant neu starten**.
-Der Eintrag "Schnellbuchung" erscheint anschließend in der Seitenleiste.
+1. HACS öffnen, oben rechts das Menü (drei Punkte) und
+   **Benutzerdefinierte Repositorys** (englisch „Custom repositories“) wählen.
+2. Als Repository `https://github.com/koch-r-de/ha-finanzverwaltung`
+   eintragen, als Typ **Integration** wählen und hinzufügen.
+3. In HACS nach **Finanzverwaltung Schnellbuchung** suchen, öffnen und
+   **Herunterladen** wählen. Die angebotene neueste Version bestätigen.
+4. Home Assistant neu starten: **Einstellungen → System → ⏻ → Home Assistant
+   neu starten**.
+5. **Einstellungen → Geräte & Dienste → Integration hinzufügen**, nach
+   **Finanzverwaltung** suchen und bestätigen. Eingaben sind keine nötig.
+6. In der Seitenleiste erscheint **Schnellbuchung**. In der App auf dem Handy
+   erscheint der Eintrag nach dem nächsten Öffnen der App.
 
 ### Aktualisieren
 
-Ändert sich `finanzen-schnellbuchung.js` (zuletzt in 2.6.4), die Datei erneut
-nach `config/www/` kopieren, in `configuration.yaml` die Zahl hinter `?v=` auf
-die neue Version setzen und Home Assistant neu starten. Der geänderte Zusatz
-zwingt Browser und App, die Datei neu zu laden. Eine eigene Änderung an
-`ADDON_SLUG` (siehe unten) dabei in die neue Datei übernehmen.
+Neue Versionen meldet HACS unter **Einstellungen → Updates**. Update
+installieren und Home Assistant neu starten. Browser und App laden die neue
+Fassung von selbst, weil die Integration die Versionsnummer an die Adresse der
+Panel-Datei hängt.
 
-### Warum das so gebaut ist
+Add-on und Integration sind zwei getrennte Updates: das Add-on im App-Store,
+die Integration in HACS. Beide tragen dieselbe Versionsnummer.
 
-Die Ingress-URL des Add-ons enthält ein Token, das sich bei einer
-Neuinstallation ändert. Das Panel ermittelt die URL deshalb zur
-Laufzeit über die Supervisor-API, statt sie fest einzutragen – der
-Seitenleisten-Eintrag überlebt damit jede Neuinstallation.
+### Umstieg vom YAML-Eintrag
 
-Das Panel sucht zuerst `local_finanzverwaltung` (lokal installiert) und
-dann jedes Add-on, dessen Kennung auf `_finanzverwaltung` endet (aus einem
-Repository installiert, z. B. `a1b2c3d4_finanzverwaltung`). Zeigt die Seite
-trotzdem eine Fehlermeldung, in `finanzen-schnellbuchung.js` die Konstante
-`ADDON_SLUG` ganz oben auf die Kennung setzen. Sie steht in der Adresszeile
-des Browsers auf der Seite der App (`…/addon/<kennung>/info`).
+Bis Version 2.6.4 kam der Eintrag über `panel_custom` in der
+`configuration.yaml` und die Datei `config/www/finanzen-schnellbuchung.js`.
+So wird umgestellt:
 
-Für Siri gilt dasselbe: Der Rechnername in den Adressen ist die Kennung mit
-Bindestrich statt Unterstrich, also `local-finanzverwaltung` oder z. B.
-`a1b2c3d4-finanzverwaltung`.
+1. Die Integration wie oben installieren und einrichten. Bis zum nächsten
+   Schritt stehen zwei Einträge „Schnellbuchung“ in der Seitenleiste, und unter
+   **Einstellungen → System → Reparaturen** steht ein Hinweis auf den alten
+   Eintrag.
+2. In der `configuration.yaml` unter `panel_custom:` den Eintrag mit
+   `name: finanzen-schnellbuchung-panel` löschen. War er der einzige, auch die
+   Zeile `panel_custom:` selbst.
+3. Die Datei `config/www/finanzen-schnellbuchung.js` löschen.
+4. Home Assistant neu starten. Der alte Eintrag und der Hinweis verschwinden.
+
+Die Schnellbuchung hat jetzt die Adresse `/finanzen-schnellbuchung` statt
+`/schnellbuchung`. Ein Lesezeichen darauf bitte anpassen.
+
+### Ohne HACS
+
+Den Ordner `custom_components/finanzverwaltung` aus dem Repository nach
+`config/custom_components/finanzverwaltung` kopieren, etwa über die
+Samba-Freigabe, dann weiter mit Schritt 4 der Installation. Für ein Update
+den Ordner ersetzen und neu starten. HACS meldet dann keine Updates.
+
+### Gut zu wissen
+
+- Die Schnellbuchung funktioniert auch für Benutzer ohne Administratorrechte.
+- Die Integration findet das Add-on beim Start von Home Assistant selbst, ob
+  es lokal oder aus einem Repository installiert ist. Wurde das Add-on neu
+  oder aus einem anderen Repository installiert, Home Assistant einmal neu
+  starten.
+- Die Seite hält ihre Ingress-Sitzung selbst am Leben. Sie bleibt also auch
+  benutzbar, wenn sie länger offen liegt.
+- Entfernen: **Einstellungen → Geräte & Dienste → Finanzverwaltung →
+  Löschen**, danach die Integration in HACS entfernen. Die Daten des Add-ons
+  berührt das nicht.
 
 ---
 

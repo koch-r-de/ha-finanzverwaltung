@@ -1,0 +1,15 @@
+{
+  "domain": "finanzverwaltung",
+  "name": "Finanzverwaltung",
+  "after_dependencies": ["hassio"],
+  "codeowners": ["@koch-r-de"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http", "panel_custom"],
+  "documentation": "https://github.com/koch-r-de/ha-finanzverwaltung/blob/main/ha-integration/README-HA-Integration.md",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/koch-r-de/ha-finanzverwaltung/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "2.7"
+}

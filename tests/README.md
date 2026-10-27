@@ -10,6 +10,20 @@ python3 -m playwright install chromium
 `httpx` braucht der TestClient von FastAPI, `pypdf` die Prüfung des
 PDF-Handbuchs, `playwright` die Oberflächentests.
 
+Die Integration in `custom_components/` (seit 2.7) läuft nur mit Home
+Assistant. `v27_test.py` braucht dafür eine eigene Umgebung unter
+`tests/.ha-venv` (oder den Pfad eines Python-Interpreters in
+`FINANZAPP_HA_PYTHON`). Home Assistant 2026.x verlangt Python 3.13 oder neuer:
+
+```
+python3 -m venv tests/.ha-venv
+tests/.ha-venv/bin/pip install pytest-homeassistant-custom-component==0.13.316 home-assistant-frontend==20260128.6
+```
+
+Das Paket bringt Home Assistant 2026.2.3 mit. Die Version des Frontends muss zu
+der in `homeassistant/components/frontend/manifest.json` der installierten
+Version passen. Fehlt die Umgebung, meldet die Reihe „0/1 bestanden“.
+
 ## Alle Tests ausführen
 
 Aus dem Wurzelordner des Repositorys:
@@ -38,7 +52,8 @@ Für die Oberflächentests startet das Skript den Server auf Port 8935.
 | `v261_test.py` | 2.6.1: Befund P, Zielkonto nur bei Übertragungen, Datenkorrektur | `daten/v21` mit eingestreuten Altfehlern |
 | `v26_test.py` | 2.6: Feiertage (Ostern, Intervalle, Sonderfälle, Verschiebung, Migration, Hinweise, Siri, Import) | `daten/v21` |
 | `ui*_test.py` | Oberfläche der jeweiligen Version (Playwright) | `daten/v191`, ergänzt durch `ui_vorbereiten.py` |
-| `ui264_test.py` | 2.6.4: Seitenleisten-Panel der Schnellbuchung eingebettet (Höhe in drei Behältern, Desktop und iPhone); optional Pfad einer anderen Panel-Datei für die Gegenprobe | `daten/v191` |
+| `v27_test.py` | 2.7: Integration für HACS (Einrichtung, Panel mit Version und Kennung, Befund S serverseitig, Hinweis auf den alten YAML-Eintrag, Pflichtdateien, gleiche Versionen); pytest in `tests/.ha-venv` | keine |
+| `ui27_test.py` | 2.7: Panel der Integration eingebettet wie in Home Assistant (volle Höhe wie seit 2.6.4, Befund S ohne Adminrecht, Befund T Ingress-Sitzung mit Uhr-Attrappe, ältere HA-Version); optional Pfad einer anderen Panel-Datei für die Gegenprobe. Ersetzt `ui264_test.py` | `daten/v191` |
 | `ui263_test.py` | 2.6.3: Schnellbuchung (Issue #4 Eingabetaste, Befund R, Vorauswahl der Kategorie, alle Felder sichtbar) | `daten/v191` |
 | `ui26_test.py` | 2.6: Bundesland-Abfrage, Hinweise, Symbol in der Liste, Dialoge | `daten/v191` ohne gewähltes Bundesland |
 | `upgrade_test.py` | Update einer Datenbank mit Vergleich aller Tabellen | beliebig, siehe unten |

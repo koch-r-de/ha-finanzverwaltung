@@ -2,6 +2,12 @@
 
 Ausführlich zu jeder Version: DOCS.md, Abschnitte „Neu in Version …“.
 
+## 2.7
+
+- Neu: Die Schnellbuchung in der Seitenleiste ist eine Integration, die HACS installiert und aktualisiert. Kein Kopieren und kein Eintrag in der `configuration.yaml` mehr. Neue Adresse `/finanzen-schnellbuchung`, Umstieg siehe `ha-integration/README-HA-Integration.md`.
+- Korrektur: Benutzer ohne Administratorrechte sahen bei einer Installation aus dem Repository nur eine Fehlermeldung (Befund S).
+- Korrektur: Die Schnellbuchung in der Seitenleiste legte keine eigene Ingress-Sitzung an und konnte nach 15 Minuten „401: Unauthorized“ zeigen (Befund T).
+
 ## 2.6.4
 
 - Korrektur: Die Schnellbuchung in der Seitenleiste von Home Assistant war nur 150 Pixel hoch, sichtbar war nur „Betrag“ (Issue #4). `finanzen-schnellbuchung.js` erneut nach `config/www` kopieren und `module_url` auf `?v=2.6.4` setzen.
