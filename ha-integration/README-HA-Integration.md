@@ -24,13 +24,21 @@ panel_custom:
     sidebar_title: Schnellbuchung
     sidebar_icon: mdi:cash-plus
     url_path: schnellbuchung
-    module_url: /local/finanzen-schnellbuchung.js
+    module_url: /local/finanzen-schnellbuchung.js?v=2.6.4
     embed_iframe: false
     require_admin: false
 ```
 
 Danach **Einstellungen → System → ⏻ → Home Assistant neu starten**.
 Der Eintrag "Schnellbuchung" erscheint anschließend in der Seitenleiste.
+
+### Aktualisieren
+
+Ändert sich `finanzen-schnellbuchung.js` (zuletzt in 2.6.4), die Datei erneut
+nach `config/www/` kopieren, in `configuration.yaml` die Zahl hinter `?v=` auf
+die neue Version setzen und Home Assistant neu starten. Der geänderte Zusatz
+zwingt Browser und App, die Datei neu zu laden. Eine eigene Änderung an
+`ADDON_SLUG` (siehe unten) dabei in die neue Datei übernehmen.
 
 ### Warum das so gebaut ist
 

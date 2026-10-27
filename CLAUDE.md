@@ -176,3 +176,7 @@ sonst blockiert die Pflichtabfrage (`alle_tests.bundesland_vorbelegen`).
   Schlägt ein alter Test fehl, erst mit dem Code der Vorversion gegenprüfen.
 - Nichts doppelt pflegen: Hinweistexte nur in `hilfe.md`, Begründungen nur in
   `DOCS.md`.
+- Seiten, die eingebettet laufen (Schnellbuchung im Panel aus
+  `ha-integration/`), auch eingebettet testen (`ui264_test.py`, Lehre aus #4).
+  Änderungen an `ha-integration/` erreichen den Anwender nicht über das
+  Add-on-Update; Hilfe und README nennen dann den Kopierschritt.

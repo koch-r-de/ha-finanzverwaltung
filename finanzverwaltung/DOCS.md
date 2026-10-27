@@ -138,6 +138,35 @@ neuen Darlehen); die Karte zeigt daraus den noch nicht ausgezahlten Rest.
 Bestehende Darlehen bleiben ohne Summe, bis sie über "Ändern" nachgetragen
 wird.
 
+## Neu in Version 2.6.4
+
+**Issue #4, eigentliche Ursache: Schnellbuchung in der Seitenleiste nur 150
+Pixel hoch (vom Anwender nach 2.6.3 erneut gemeldet):** Im eigenen Panel
+(`ha-integration/finanzen-schnellbuchung.js`) war sichtbar nur das Feld
+„Betrag (€)“, darunter eine graue Fläche. Erst nach der Eingabetaste rollte die
+Seite im Panel weiter, und dann ebenfalls abgeschnitten. Ursache: Das Panel
+setzte `:host { height: 100% }` und das iframe auf `flex: 1`. Home Assistant
+gibt dem Behälter eines eigenen Panels aber keine feste Höhe (aus dem
+Verhalten geschlossen, im Quelltext von Home Assistant nicht geprüft), damit
+lief die Prozentangabe ins Leere und das iframe fiel auf seine Standardhöhe von
+150 Pixeln zurück. Das war schon der Kern der ersten Meldung von #4: Im
+150-Pixel-Fenster war nur der Betrag zu sehen, die Eingabetaste buchte (seit
+2.6.3 behoben) und leerte das Feld. Die Analyse in 2.6.3 war unvollständig,
+weil die Seite nur direkt und nicht eingebettet getestet wurde.
+
+Behebung im Panel: Höhe per CSS `100vh`/`100dvh` als Rückfall und per Skript
+genau als Fensterhöhe abzüglich der Oberkante des Panels, nachgezogen bei
+Größenänderung. Die Datei muss der Anwender erneut nach `config/www`
+kopieren; `module_url` bekommt dafür den Zusatz `?v=2.6.4`, damit Browser und
+App die neue Datei laden (Wirkung auf den Zwischenspeicher der App
+ungeprüft). Hilfe und `README-HA-Integration.md` beschreiben das Aktualisieren.
+
+Tests: neue Reihe `ui264_test.py` baut die Einbettung nach (Behälter ohne
+Höhe, mit voller Höhe, mit Kopfleiste darüber, Desktop und iPhone,
+Größenänderung) mit einer Attrappe der Supervisor-Abfrage. Gegenprobe mit dem
+Panel von 2.6.3: 9 von 25 Prüfungen schlagen fehl, genau die Behälter ohne
+feste Höhe. Lehre: Seiten, die eingebettet laufen, auch eingebettet testen.
+
 ## Neu in Version 2.6.3
 
 **Issue #4, Schnellbuchung bucht bei der Eingabetaste (gemeldet vom Anwender,

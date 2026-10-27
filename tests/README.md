@@ -38,6 +38,7 @@ Für die Oberflächentests startet das Skript den Server auf Port 8935.
 | `v261_test.py` | 2.6.1: Befund P, Zielkonto nur bei Übertragungen, Datenkorrektur | `daten/v21` mit eingestreuten Altfehlern |
 | `v26_test.py` | 2.6: Feiertage (Ostern, Intervalle, Sonderfälle, Verschiebung, Migration, Hinweise, Siri, Import) | `daten/v21` |
 | `ui*_test.py` | Oberfläche der jeweiligen Version (Playwright) | `daten/v191`, ergänzt durch `ui_vorbereiten.py` |
+| `ui264_test.py` | 2.6.4: Seitenleisten-Panel der Schnellbuchung eingebettet (Höhe in drei Behältern, Desktop und iPhone); optional Pfad einer anderen Panel-Datei für die Gegenprobe | `daten/v191` |
 | `ui263_test.py` | 2.6.3: Schnellbuchung (Issue #4 Eingabetaste, Befund R, Vorauswahl der Kategorie, alle Felder sichtbar) | `daten/v191` |
 | `ui26_test.py` | 2.6: Bundesland-Abfrage, Hinweise, Symbol in der Liste, Dialoge | `daten/v191` ohne gewähltes Bundesland |
 | `upgrade_test.py` | Update einer Datenbank mit Vergleich aller Tabellen | beliebig, siehe unten |

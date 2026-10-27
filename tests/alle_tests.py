@@ -46,6 +46,7 @@ OBERFLAECHE = [
     ("ui24", "ui24_test.py", "ausgabe:uibasis", [str(DATEN / "v21" / "finanzdaten.db")]),
     ("ui26", "ui26_test.py", "v191", []),
     ("ui263", "ui263_test.py", "v191", []),
+    ("ui264", "ui264_test.py", "v191", []),
 ]
 
 # Reihen, die die Bundesland-Abfrage selbst prüfen

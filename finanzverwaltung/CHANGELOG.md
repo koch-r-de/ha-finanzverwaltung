@@ -2,6 +2,10 @@
 
 Ausführlich zu jeder Version: DOCS.md, Abschnitte „Neu in Version …“.
 
+## 2.6.4
+
+- Korrektur: Die Schnellbuchung in der Seitenleiste von Home Assistant war nur 150 Pixel hoch, sichtbar war nur „Betrag“ (Issue #4). `finanzen-schnellbuchung.js` erneut nach `config/www` kopieren und `module_url` auf `?v=2.6.4` setzen.
+
 ## 2.6.3
 
 - Korrektur: In der Schnellbuchung buchte die Eingabetaste sofort, der Betrag verschwand (Issue #4). Sie springt jetzt ins nächste Feld, die Meldung „Gebucht“ steht oben und bleibt.

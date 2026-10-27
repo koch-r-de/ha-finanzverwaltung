@@ -16,6 +16,11 @@
 // "_finanzverwaltung" endet. Nur bei mehreren Treffern hier fest eintragen.
 const ADDON_SLUG = "local_finanzverwaltung";
 
+// Höhe (seit v2.6.4, Bezug Issue #4): Home Assistant gibt dem Behälter eines
+// eigenen Panels keine feste Höhe. „height: 100%“ lief deshalb ins Leere, und
+// das iframe fiel auf die Standardhöhe von 150 Pixeln zurück: sichtbar war nur
+// das Feld „Betrag“. Das Panel nimmt jetzt die Höhe des Fensters ab seiner
+// Oberkante (per CSS als Rückfall, per Skript genau, auch bei Größenänderung).
 class FinanzenSchnellbuchungPanel extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
@@ -27,15 +32,26 @@ class FinanzenSchnellbuchungPanel extends HTMLElement {
 
   connectedCallback() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._hoeheAnpassen = this._hoeheAnpassen || (() => {
+      const oben = Math.max(0, this.getBoundingClientRect().top);
+      this.style.height = Math.max(200, window.innerHeight - oben) + "px";
+    });
+    window.addEventListener("resize", this._hoeheAnpassen);
+    requestAnimationFrame(this._hoeheAnpassen);
+  }
+
+  disconnectedCallback() {
+    if (this._hoeheAnpassen) window.removeEventListener("resize", this._hoeheAnpassen);
   }
 
   async _aufbauen() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display: block; height: 100%; background: var(--primary-background-color); }
+        :host { display: block; height: 100vh; height: 100dvh; overflow: hidden;
+                background: var(--primary-background-color); }
         .huelle { height: 100%; display: flex; flex-direction: column; }
-        iframe { flex: 1; border: 0; width: 100%; }
+        iframe { flex: 1 1 auto; min-height: 0; height: 100%; border: 0; width: 100%; display: block; }
         .status { padding: 24px; font-family: var(--paper-font-body1_-_font-family, sans-serif);
                   color: var(--primary-text-color); }
         .fehler { color: var(--error-color, #c62828); }
@@ -51,7 +67,8 @@ class FinanzenSchnellbuchungPanel extends HTMLElement {
 
       const url = basis.replace(/\/+$/, "") + "/schnellbuchung";
       this.shadowRoot.querySelector(".huelle").innerHTML =
-        `<iframe src="${url}" allow="clipboard-write"></iframe>`;
+        `<iframe src="${url}" allow="clipboard-write" title="Schnellbuchung"></iframe>`;
+      if (this._hoeheAnpassen) this._hoeheAnpassen();
     } catch (e) {
       this.shadowRoot.querySelector(".huelle").innerHTML = `
         <div class="status">
