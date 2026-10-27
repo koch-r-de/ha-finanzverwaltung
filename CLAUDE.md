@@ -142,7 +142,9 @@ Die Versionsnummer steht synchron in `config.yaml` (`version`), im
 `Dockerfile` (`LABEL io.hass.version`, `ENV FINANZAPP_VERSION`,
 `ENV FINANZAPP_VERSION_DATUM`), in der zweiten Zeile von `hilfe.md` und im
 `manifest.json` der Integration (`v27_test.py` prüft das). Zu jeder Version ein
-GitHub-Release mit Tag `vX.Y`, damit HACS ein Update anzeigt. Dazu
+GitHub-Release mit Tag `vX.Y`, damit HACS ein Update mit Versionsnummer
+anzeigt. Releases und Tags legt der Anwender auf GitHub an, Claude-Sitzungen
+dürfen das nicht (HTTP 403). Ohne Release nimmt HACS den Stand von `main`. Dazu
 ein Abschnitt „Neu in Version X.Y“ in `DOCS.md` (mit Begründungen und
 gefundenen Fehlern) und ein kurzer Eintrag in `CHANGELOG.md`. Home Assistant
 erkennt ein Update nur an einer geänderten `version` in `config.yaml`.
