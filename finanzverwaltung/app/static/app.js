@@ -9,12 +9,16 @@ let CHART_SALDO, CHART_CASHFLOW, CHART_DARLEHEN, CHART_KATEGORIEN;
 
 // ─── Hilfsfunktionen ──────────────────────────────────────────────
 
-async function api(pfad, optionen = {}) {
+// Seit 3.0 mit dem Token der Sitzung (schutz.js). Greift die Sperre oder ist
+// die Datenbank zu, erscheint der Sperrbildschirm, danach wird die Anfrage
+// einmal wiederholt.
+async function api(pfad, optionen = {}, nochmal = true) {
   const antwort = await fetch(API + pfad, {
-    headers: { "Content-Type": "application/json" },
     ...optionen,
+    headers: { "Content-Type": "application/json", ...schutzKopf(), ...(optionen.headers || {}) },
   });
   if (!antwort.ok) {
+    if (nochmal && await schutzBehandeln(antwort)) return api(pfad, optionen, false);
     const text = await antwort.text().catch(() => "");
     throw new Error(`API-Fehler ${antwort.status}: ${text}`);
   }
@@ -450,7 +454,7 @@ function el(html) {
 // erzeugte Felder (z. B. im Zurücksetzen-Dialog).
 // Seit v1.10 auch das Namensfeld der Kategorien (Anlegen und Ändern).
 const KEIN_PASSWORT_FELD = 'input[type="date"], input[type="month"], #reset-phrase-eingabe, #wh-phrase-eingabe, '
-  + '#form-kategorie input[name="name"]';
+  + '#form-kategorie input[name="name"], #schutz-dialog input, .schutz-formular input';
 
 function passwortManagerFernhalten(wurzel = document) {
   const felder = wurzel.matches?.(KEIN_PASSWORT_FELD) ? [wurzel] : [];
@@ -2336,6 +2340,7 @@ async function ladeAdminAbschnitt() {
   await renderBackups();
   await renderReihenfolgeEditor();
   await ladeZuruecksetzen();
+  await renderSicherheit().catch((e) => console.warn(e));
 }
 
 // ─── Daten zurücksetzen (Administration, seit v1.8) ───────────────
@@ -2875,7 +2880,9 @@ document.getElementById("wh-pruefen").addEventListener("click", async () => {
   try {
     const form = new FormData();
     form.append("datei", datei);
-    const antwort = await fetch(API + "/admin/wiederherstellen/hochladen", { method: "POST", body: form });
+    const geheimnis = document.getElementById("wh-geheimnis").value;
+    if (geheimnis) form.append("geheimnis", geheimnis);
+    const antwort = await fetch(API + "/admin/wiederherstellen/hochladen", { method: "POST", body: form, headers: schutzKopf() });
     const daten = await antwort.json().catch(() => ({}));
     if (!antwort.ok) throw new Error(daten.detail || `Fehler ${antwort.status}`);
     whStatus("");
@@ -2913,6 +2920,11 @@ document.getElementById("import-datei-feld").addEventListener("change", (e) => {
 document.getElementById("export-herunterladen").addEventListener("click", () => {
   const von = document.getElementById("export-von").value;
   const bis = document.getElementById("export-bis").value;
+  if (SCHUTZ.status && SCHUTZ.status.verschluesselung.aktiv) {
+    schutzDownloadDialog("export", { von: von || null, bis: bis || null });
+    return;
+  }
+  if (schutzAktiv()) { herunterladen("export", { von: von || null, bis: bis || null }); return; }
   const p = new URLSearchParams();
   if (von) p.set("von", von);
   if (bis) p.set("bis", bis);
@@ -2993,13 +3005,14 @@ document.getElementById("form-import").addEventListener("submit", async (e) => {
   const formDaten = new FormData();
   formDaten.append("datei", datei);
   if (art) formDaten.append("art", art);
+  if (e.target.kennwort.value) formDaten.append("kennwort", e.target.kennwort.value);
 
   const zielDiv = document.getElementById("import-ergebnis");
   zielDiv.innerHTML = '<p class="hinweis">Prüfe …</p>';
   try {
     // Bewusst nicht ueber api(): der Browser muss bei multipart/form-data
     // selbst die Content-Type-Grenze setzen, api() wuerde sie ueberschreiben.
-    const antwort = await fetch(API + "/admin/import/vorschau", { method: "POST", body: formDaten });
+    const antwort = await fetch(API + "/admin/import/vorschau", { method: "POST", body: formDaten, headers: schutzKopf() });
     if (!antwort.ok) throw new Error(`API-Fehler ${antwort.status}: ${await antwort.text()}`);
     importVorschauAnzeigen(await antwort.json());
   } catch (err) {
@@ -3913,6 +3926,8 @@ document.getElementById("hilfe-suche").addEventListener("input", (e) => {
 });
 
 (async function init() {
+  // Seit 3.0: erst Sperre und Verschlüsselung klären (Sperrbildschirm)
+  await schutzSicherstellen();
   try {
     themeFarbenAnwenden(await api("/admin/einstellungen"));
   } catch {
@@ -3924,6 +3939,9 @@ document.getElementById("hilfe-suche").addEventListener("input", (e) => {
     if (status.datenbank_neu_angelegt) teile.push("Datenbank neu angelegt");
     if (status.umgewandelte_plan_buchungen?.length) teile.push(`${status.umgewandelte_plan_buchungen.length} Plan-Buchung(en) umgewandelt`);
     if (status.backup_erstellt) teile.push("Backup erstellt");
+    const stapel = SCHUTZ.entsperrt && SCHUTZ.entsperrt.stapel;
+    if (stapel && stapel.gebucht) teile.push(`${stapel.gebucht} vorgemerkte Buchung(en) gebucht`);
+    if (stapel && stapel.klaerliste) teile.push(`${stapel.klaerliste} in der Klärliste`);
     document.getElementById("fuss-status").textContent = teile.length ? teile.join(" · ") : "Bereit";
     document.getElementById("systeminfo-zeit").textContent = status.serverzeit
       ? `Serverzeit beim Laden: ${status.serverzeit} (${status.zeitzone}) · Zeitzone des Containers: ${status.container_zeitzone}`
@@ -3947,3 +3965,483 @@ document.getElementById("hilfe-suche").addEventListener("input", (e) => {
   const m = location.hash.match(/^#hilfe:(.+)$/);
   if (m) hilfeOeffnen(decodeURIComponent(m[1]));
 })();
+
+// ─── Sicherheit: Sperre, Verschlüsselung, Klärliste (seit 3.0) ──────
+// Regeln und Begründungen: DOCS.md „Neu in Version 3.0“. Der Server prüft
+// alles selbst, die Oberfläche zeigt nur an, was erlaubt ist.
+
+function schutzAktiv() {
+  const st = SCHUTZ.status;
+  return !!(st && (st.sperre.aktiv || st.verschluesselung.aktiv));
+}
+
+// Downloads (seit 3.0): Ohne Sperre und Verschlüsselung wie bis 2.7 über
+// Links. Sonst bereitet der Server den Inhalt vor und gibt ein einmaliges
+// Ticket, der Browser lädt dann wie gewohnt über einen Link.
+async function herunterladen(art, extra = {}) {
+  const r = await api("/admin/download", { method: "POST", body: JSON.stringify({ art, ...extra }) });
+  window.location.href = `${API}/download/${encodeURIComponent(r.ticket)}`;
+}
+
+document.getElementById("db-herunterladen").addEventListener("click", async () => {
+  if (SCHUTZ.status && SCHUTZ.status.verschluesselung.aktiv) { schutzDownloadDialog("datenbank"); return; }
+  if (schutzAktiv()) { await herunterladen("datenbank"); return; }
+  window.location.href = `${API}/admin/datenbank-herunterladen`;
+});
+
+document.getElementById("import-vorlage").addEventListener("click", async () => {
+  if (schutzAktiv()) { await herunterladen("import_vorlage"); return; }
+  window.location.href = `${API}/admin/import-vorlage`;
+});
+
+function schutzDialog(html) {
+  const dialog = document.getElementById("schutz-dialog");
+  document.getElementById("schutz-dialog-inhalt").innerHTML = html;
+  if (!dialog.open) dialog.showModal();
+  dialog.querySelectorAll("[data-schliessen]").forEach((k) => k.addEventListener("click", () => dialog.close()));
+  dialog.querySelectorAll("form").forEach((f) => musterImFormular(f));
+  return dialog;
+}
+
+function schutzFehler(ziel, text) {
+  const f = typeof ziel === "string" ? document.getElementById(ziel) : ziel;
+  if (!f) return;
+  f.textContent = text || "";
+  f.hidden = !text;
+}
+
+// Datenbank-Download und Export bei eingeschalteter Verschlüsselung:
+// Standard geschützt, unverschlüsselt nur mit Warnung und Phrase.
+function schutzDownloadDialog(art, extra = {}) {
+  const istExport = art === "export";
+  const min = (SCHUTZ.status && SCHUTZ.status.verschluesselung.mindestlaenge) || 16;
+  schutzDialog(`
+    <h2>${istExport ? "Export herunterladen" : "Datenbank herunterladen"}</h2>
+    <p class="hinweis">${istExport ? hinweisHtml("sicherheit.export") : hinweisHtml("sicherheit.download")}</p>
+    <form id="schutz-dl-form" class="formular" autocomplete="off">
+      ${istExport ? `
+        <div><label>Excel-Kennwort (mindestens ${min} Zeichen)</label><input type="password" name="kennwort"></div>
+        <div><label>Kennwort wiederholen</label><input type="password" name="wiederholung"></div>` : ""}
+      <div class="reihen-werkzeuge reset-knoepfe">
+        <button type="button" class="knopf sekundaer" data-schliessen>Abbrechen</button>
+        <button type="submit" class="knopf">${istExport ? "Mit Kennwort herunterladen" : "Verschlüsselt herunterladen"}</button>
+      </div>
+    </form>
+    <div class="warnung" id="schutz-dl-fehler" hidden></div>
+    <details style="margin-top:12px"><summary>Unverschlüsselt herunterladen …</summary>
+      <p class="warnung">${hinweisHtml("sicherheit.unverschluesselt")}</p>
+      <div class="reihen-werkzeuge"><button type="button" class="knopf gefahr klein" id="schutz-dl-klar-start">Phrase anfordern</button></div>
+      <div id="schutz-dl-klar"></div>
+    </details>`);
+  document.getElementById("schutz-dl-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const f = e.target;
+      await herunterladen(art, istExport ? { ...extra, kennwort: f.kennwort.value, wiederholung: f.wiederholung.value } : extra);
+      document.getElementById("schutz-dialog").close();
+    } catch (err) { schutzFehler("schutz-dl-fehler", apiFehlerText(err)); }
+  });
+  document.getElementById("schutz-dl-klar-start").addEventListener("click", async () => {
+    try {
+      const p = await api(`/admin/klartext-phrase?art=${istExport ? "export" : "datenbank"}`, { method: "POST" });
+      document.getElementById("schutz-dl-klar").innerHTML = `
+        <p>Zur Bestätigung diese Phrase eintippen:</p><div class="reset-phrase">${resetEsc(p.phrase)}</div>
+        <input id="schutz-dl-phrase" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Phrase eingeben">
+        <div class="reihen-werkzeuge" style="margin-top:8px"><button type="button" class="knopf gefahr" id="schutz-dl-klar-los" disabled>Unverschlüsselt herunterladen</button></div>`;
+      const eingabe = document.getElementById("schutz-dl-phrase");
+      const los = document.getElementById("schutz-dl-klar-los");
+      eingabe.addEventListener("input", () => { los.disabled = eingabe.value.trim().toLowerCase() !== p.phrase; });
+      los.addEventListener("click", async () => {
+        try {
+          await herunterladen(`${art}_klartext`, { ...extra, token: p.token, phrase: eingabe.value });
+          document.getElementById("schutz-dialog").close();
+        } catch (err) { schutzFehler("schutz-dl-fehler", apiFehlerText(err)); }
+      });
+    } catch (err) { schutzFehler("schutz-dl-fehler", apiFehlerText(err)); }
+  });
+}
+
+// Wiederherstellungsschlüssel ausdrucken: eigenes, unsichtbares Fenster,
+// damit nur der Schlüssel auf dem Papier steht.
+function schluesselDrucken(titel, schluessel) {
+  const rahmen = document.createElement("iframe");
+  rahmen.style.cssText = "position:fixed;width:0;height:0;border:0;right:0;bottom:0";
+  document.body.appendChild(rahmen);
+  const d = rahmen.contentDocument;
+  d.open();
+  d.write(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>${resetEsc(titel)}</title></head>
+    <body style="font-family:sans-serif;padding:24px">
+    <h1 style="font-size:20px">${resetEsc(titel)}</h1>
+    <p>Private Finanzverwaltung · erstellt am ${new Date().toLocaleDateString("de-DE")}</p>
+    <p style="font-family:monospace;font-size:24px;letter-spacing:.08em;border:1px dashed #333;padding:14px;text-align:center">${resetEsc(schluessel)}</p>
+    <p>Sicher aufbewahren, getrennt vom Gerät. Wer diesen Schlüssel hat, kommt an die Daten.</p></body></html>`);
+  d.close();
+  rahmen.contentWindow.focus();
+  rahmen.contentWindow.print();
+  setTimeout(() => rahmen.remove(), 60000);
+}
+
+function schluesselBestaetigenHtml(titel, schluessel, extraHtml = "") {
+  return `
+    <h2 style="color:var(--tinte)">${resetEsc(titel)}</h2>
+    <p class="hinweis">${hinweisHtml("sicherheit.wiederherstellungsschluessel")}</p>
+    <div class="schluessel-anzeige" id="schutz-schluessel">${resetEsc(schluessel)}</div>
+    <div class="reihen-werkzeuge"><button type="button" class="knopf sekundaer klein" id="schutz-drucken">Drucken</button></div>
+    <form id="schutz-bestaetigen-form" class="formular" autocomplete="off" style="margin-top:12px">
+      <div style="grid-column:1/-1"><label>Schlüssel zur Bestätigung abtippen</label>
+        <input name="getippt" autocomplete="off" autocapitalize="characters" spellcheck="false"></div>
+      ${extraHtml}
+      <div class="reihen-werkzeuge reset-knoepfe" style="grid-column:1/-1">
+        <button type="button" class="knopf sekundaer" data-schliessen>Abbrechen</button>
+        <button type="submit" class="knopf gefahr" id="schutz-bestaetigen-los">Einschalten</button>
+      </div>
+    </form>
+    <div class="warnung" id="schutz-bestaetigen-fehler" hidden></div>`;
+}
+
+function codeAuswahlHtml(mindest, praefix = "") {
+  return `
+    <div><label>Art des Codes</label><select name="${praefix}art">
+      <option value="pin">PIN (mindestens ${mindest.pin} Ziffern)</option>
+      <option value="passwort">Passwort (mindestens ${mindest.passwort} Zeichen)</option>
+      <option value="muster">Muster (mindestens ${mindest.muster} Punkte)</option></select></div>
+    <div class="breit schutz-codefelder" data-praefix="${praefix}"></div>`;
+}
+
+function codeFelderBinden(form, praefix = "") {
+  const sel = form.elements[`${praefix}art`];
+  const ziel = form.querySelector(`.schutz-codefelder[data-praefix="${praefix}"]`);
+  const zeichnen = () => {
+    const art = sel.value;
+    ziel.innerHTML = `<div class="schutz-formular">
+      <div><label>${ART_NAMEN[art]}</label>${codeFeldHtml(art, `${praefix}code`)}</div>
+      <div><label>${ART_NAMEN[art]} wiederholen</label>${codeFeldHtml(art, `${praefix}wiederholung`)}</div></div>`;
+    musterImFormular(form);
+  };
+  sel.addEventListener("change", zeichnen);
+  zeichnen();
+}
+
+async function renderSicherheit() {
+  await schutzStatusLaden();
+  await Promise.all([sperreRendern(), verschluesselungRendern(), klaerlisteRendern()]);
+}
+
+async function sperreRendern() {
+  const d = await api("/schutz/sperre");
+  const ziel = document.getElementById("sperre-inhalt");
+  const status = `<p><span class="schutz-status ${d.aktiv ? "an" : ""}">${d.aktiv ? "eingeschaltet" : "ausgeschaltet"}</span>
+    ${d.aktiv ? `seit ${resetEsc((d.seit || "").slice(0, 10).split("-").reverse().join("."))} · ${d.modus === "gemeinsam" ? "gemeinsamer Code" : "eigener Code je Benutzer"}` : ""}</p>`;
+  const herkunft = d.herkunft_modus !== "sperren"
+    ? `<p class="warnung">${hinweisHtml("sicherheit.herkunft")}</p>` : "";
+  const grund = d.verwalten ? "" : `<p class="hinweis">${resetEsc(d.grund || "")}</p>`;
+  const einst = (e, mitModus) => `
+    ${mitModus ? `<div><label>Code</label><select name="modus"><option value="je_benutzer">eigener Code je Benutzer</option>
+      <option value="gemeinsam">ein gemeinsamer Code</option></select></div>` : ""}
+    <div><label>Sperre bis Freigabe nach</label><select name="grenze">
+      ${[0, 5, 6, 7, 8, 9, 10, 12, 15, 20].map((g) => `<option value="${g}" ${g === e.grenze ? "selected" : ""}>${g ? `${g} Fehlversuchen` : "ohne Limit"}</option>`).join("")}</select></div>
+    <div><label>Automatische Sperre nach Minuten (0 = aus)</label><input type="number" name="auto_minuten" min="0" max="240" value="${e.auto_minuten}"></div>
+    <div><label>Schnellbuchung</label><select name="schnellbuchung">
+      <option value="nur_erfassen" ${e.schnellbuchung === "nur_erfassen" ? "selected" : ""}>ohne Code nur erfassen</option>
+      <option value="mit_code" ${e.schnellbuchung === "mit_code" ? "selected" : ""}>immer mit Code</option></select></div>
+    <div class="breit"><label><input type="checkbox" name="auto_hintergrund" ${e.auto_hintergrund ? "checked" : ""}>
+      Auch sperren, wenn die App in den Hintergrund geht oder der Tab verlassen wird</label></div>
+    <div><label>Mindestlänge PIN</label><input type="number" name="min_pin" min="6" max="64" value="${e.mindest.pin}"></div>
+    <div><label>Mindestlänge Passwort</label><input type="number" name="min_passwort" min="8" max="64" value="${e.mindest.passwort}"></div>
+    <div><label>Mindestzahl Punkte Muster</label><input type="number" name="min_muster" min="5" max="9" value="${e.mindest.muster}"></div>`;
+  const einstLesen = (f) => ({ grenze: Number(f.grenze.value), auto_minuten: Number(f.auto_minuten.value),
+    schnellbuchung: f.schnellbuchung.value, auto_hintergrund: f.auto_hintergrund.checked,
+    mindest: { pin: Number(f.min_pin.value), passwort: Number(f.min_passwort.value), muster: Number(f.min_muster.value) },
+    ...(f.modus ? { modus: f.modus.value } : {}) });
+
+  if (!d.aktiv) {
+    const vorgabe = { grenze: 10, auto_minuten: 5, schnellbuchung: "nur_erfassen", auto_hintergrund: false,
+      mindest: { pin: 6, passwort: 8, muster: 5 } };
+    ziel.innerHTML = status + herkunft + grund + (d.verwalten ? `
+      <form id="form-sperre-ein" class="schutz-formular" autocomplete="off">
+        ${einst(vorgabe, true)}
+        ${codeAuswahlHtml(vorgabe.mindest)}
+        <div class="breit reihen-werkzeuge"><button type="submit" class="knopf">Sperre einschalten …</button></div>
+      </form><div class="warnung" id="sperre-fehler" hidden></div>` : "");
+    const form = document.getElementById("form-sperre-ein");
+    if (!form) return;
+    codeFelderBinden(form);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      schutzFehler("sperre-fehler", "");
+      try {
+        const v = await api("/schutz/sperre/vorbereiten", { method: "POST", body: JSON.stringify({
+          einstellungen: einstLesen(form), art: form.art.value, code: codeWert(form, "code"),
+          wiederholung: codeWert(form, "wiederholung") }) });
+        sperreEinschaltenDialog(v);
+      } catch (err) { schutzFehler("sperre-fehler", apiFehlerText(err)); }
+    });
+    return;
+  }
+
+  const ich = d.benutzer.find((b) => b.id === d.ich);
+  const zeilen = d.benutzer.map((b) => `<tr>
+      <td>${resetEsc(b.name || b.id)}${b.id === d.ich ? " (du)" : ""}</td>
+      <td>${b.code_gesetzt ? resetEsc(ART_NAMEN[b.art] || "gesetzt") : "noch nicht festgelegt"}</td>
+      <td>${b.dauerhaft ? "gesperrt bis Freigabe" : (b.anzahl ? `${b.anzahl} Fehlversuch(e)` : "–")}</td>
+      <td class="rechts">
+        ${b.anzahl && b.id !== d.ich ? `<button class="knopf sekundaer klein" data-sperre-freigeben="${resetEsc(b.id)}">Freigeben</button>` : ""}
+        ${d.verwalten && b.id !== d.ich ? `<button class="knopf gefahr klein" data-sperre-entfernen="${resetEsc(b.id)}">Entfernen</button>` : ""}
+      </td></tr>`).join("");
+  const darfCode = d.modus === "je_benutzer" || d.verwalten;
+  const alteArt = (ich && ich.art) || d.gemeinsame_art || "pin";
+  ziel.innerHTML = status + herkunft + grund + `
+    <h3>Freigegebene Benutzer</h3>
+    <table><thead><tr><th>Benutzer</th><th>Code</th><th>Fehlversuche</th><th></th></tr></thead><tbody id="sperre-benutzer">${zeilen}</tbody></table>
+    ${d.verwalten ? `<div class="reihen-werkzeuge" style="margin-top:8px">
+      <select id="sperre-bekannt">${d.bekannt.length ? d.bekannt.map((b) => `<option value="${resetEsc(b.id)}">${resetEsc(b.name || b.id)}</option>`).join("")
+        : '<option value="">– niemand weiteres hat die Finanzverwaltung geöffnet –</option>'}</select>
+      <button class="knopf sekundaer klein" id="sperre-hinzu" ${d.bekannt.length ? "" : "disabled"}>Freigeben</button></div>` : ""}
+    ${d.verwalten ? `<h3>Einstellungen</h3><form id="form-sperre-einst" class="schutz-formular" autocomplete="off">
+      ${einst(d, false)}<div class="breit reihen-werkzeuge"><button type="submit" class="knopf">Speichern</button></div></form>` : ""}
+    ${darfCode ? `<h3>${d.modus === "gemeinsam" ? "Gemeinsamen Code ändern" : "Eigenen Code ändern"}</h3>
+      <form id="form-sperre-code" class="schutz-formular" autocomplete="off">
+        <div class="breit"><label>Bisheriger Code (${resetEsc(ART_NAMEN[alteArt])})</label>${codeFeldHtml(alteArt, "alter_code")}</div>
+        ${codeAuswahlHtml(d.mindest, "neu_")}
+        <div class="breit reihen-werkzeuge"><button type="submit" class="knopf">Code ändern</button></div></form>` : ""}
+    ${d.verwalten ? `<h3>Ausschalten</h3><form id="form-sperre-aus" class="schutz-formular" autocomplete="off">
+      <div class="breit"><label>Dein Code (${resetEsc(ART_NAMEN[alteArt])})</label>${codeFeldHtml(alteArt, "code")}</div>
+      <div class="breit reihen-werkzeuge"><button type="submit" class="knopf gefahr">Sperre ausschalten</button></div></form>` : ""}
+    <div class="warnung" id="sperre-fehler" hidden></div><div class="hinweis" id="sperre-meldung"></div>`;
+  ziel.querySelectorAll("form").forEach((f) => musterImFormular(f));
+  const melden = (text) => { document.getElementById("sperre-meldung").textContent = text; };
+  const ausfuehren = async (fn, text) => {
+    schutzFehler("sperre-fehler", "");
+    try { await fn(); await sperreRendern(); melden(text); } catch (err) { schutzFehler("sperre-fehler", apiFehlerText(err)); }
+  };
+  ziel.querySelectorAll("[data-sperre-freigeben]").forEach((k) => k.addEventListener("click", () => ausfuehren(
+    () => api(`/schutz/sperre/benutzer/${encodeURIComponent(k.dataset.sperreFreigeben)}/entsperren`, { method: "POST" }),
+    "Fehlversuche zurückgesetzt.")));
+  ziel.querySelectorAll("[data-sperre-entfernen]").forEach((k) => k.addEventListener("click", () => ausfuehren(
+    () => api(`/schutz/sperre/benutzer/${encodeURIComponent(k.dataset.sperreEntfernen)}`, { method: "DELETE" }),
+    "Aus der Freigabeliste entfernt.")));
+  const hinzu = document.getElementById("sperre-hinzu");
+  if (hinzu) hinzu.addEventListener("click", () => ausfuehren(
+    () => api("/schutz/sperre/benutzer", { method: "POST", body: JSON.stringify({ id: document.getElementById("sperre-bekannt").value }) }),
+    "Freigegeben. Beim ersten Öffnen legt der Benutzer seinen Code fest."));
+  const einstForm = document.getElementById("form-sperre-einst");
+  if (einstForm) einstForm.addEventListener("submit", (e) => { e.preventDefault(); ausfuehren(async () => {
+    await api("/schutz/sperre", { method: "PUT", body: JSON.stringify(einstLesen(einstForm)) });
+    await schutzStatusLaden(); autoSperreStarten(); }, "Gespeichert."); });
+  const codeForm = document.getElementById("form-sperre-code");
+  if (codeForm) {
+    codeFelderBinden(codeForm, "neu_");
+    codeForm.addEventListener("submit", (e) => { e.preventDefault(); ausfuehren(() => api("/schutz/sperre/code", {
+      method: "POST", body: JSON.stringify({ alter_code: codeWert(codeForm, "alter_code"), art: codeForm.neu_art.value,
+        code: codeWert(codeForm, "neu_code"), wiederholung: codeWert(codeForm, "neu_wiederholung") }) }), "Code geändert."); });
+  }
+  const ausForm = document.getElementById("form-sperre-aus");
+  if (ausForm) ausForm.addEventListener("submit", (e) => { e.preventDefault(); ausfuehren(async () => {
+    await api("/schutz/sperre/ausschalten", { method: "POST", body: JSON.stringify({ code: codeWert(ausForm, "code") }) });
+    schutzSitzungSetzen(null); await schutzStatusLaden(); autoSperreStarten(); }, "Die Sperre ist ausgeschaltet."); });
+}
+
+function sperreEinschaltenDialog(v) {
+  schutzDialog(schluesselBestaetigenHtml("Wiederherstellungsschlüssel der Sperre", v.wiederherstellungsschluessel));
+  document.getElementById("schutz-drucken").addEventListener("click", () =>
+    schluesselDrucken("Wiederherstellungsschlüssel der Sperre", v.wiederherstellungsschluessel));
+  document.getElementById("schutz-bestaetigen-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api("/schutz/sperre/einschalten", { method: "POST",
+        body: JSON.stringify({ kennung: v.kennung, getippt: e.target.getippt.value }) });
+      schutzSitzungSetzen(r.sitzung);
+      document.getElementById("schutz-dialog").close();
+      await schutzStatusLaden();
+      autoSperreStarten();
+      await sperreRendern();
+      document.getElementById("sperre-meldung").textContent = "Die Sperre ist eingeschaltet.";
+    } catch (err) { schutzFehler("schutz-bestaetigen-fehler", apiFehlerText(err)); }
+  });
+}
+
+async function verschluesselungRendern() {
+  const v = await api("/schutz/verschluesselung");
+  const ziel = document.getElementById("verschluesselung-inhalt");
+  const status = `<p><span class="schutz-status ${v.aktiv ? "an" : ""}">${v.aktiv ? "eingeschaltet" : "ausgeschaltet"}</span>
+    ${v.aktiv && v.seit ? `seit ${resetEsc(v.seit.slice(0, 10).split("-").reverse().join("."))}` : ""}</p>`;
+  const grund = v.verwalten ? "" : `<p class="hinweis">${resetEsc(v.grund || "")}</p>`;
+  if (!v.verfuegbar) { ziel.innerHTML = status + '<p class="warnung">SQLCipher ist in diesem Add-on nicht verfügbar.</p>'; return; }
+  if (!v.aktiv) {
+    ziel.innerHTML = status + grund + (v.verwalten ? `
+      <p><strong>1.</strong> Sicherung: Datenbank unverschlüsselt herunterladen.
+        <button type="button" class="knopf sekundaer klein" id="vs-download">Datenbank herunterladen</button>
+        <span class="hinweis" id="vs-download-status">${v.klartext_download ? "erledigt" : "noch offen"}</span></p>
+      <p><strong>2.</strong> Passphrase festlegen.</p>
+      <form id="form-vs-ein" class="schutz-formular" autocomplete="off">
+        <div><label>Passphrase</label><input type="password" name="passphrase"></div>
+        <div><label>Passphrase wiederholen</label><input type="password" name="wiederholung"></div>
+        <div><label>Mindestlänge (ab ${v.untergrenze})</label><input type="number" name="mindestlaenge" min="${v.untergrenze}" max="200" value="${v.mindestlaenge}"></div>
+        <div class="breit reihen-werkzeuge"><button type="submit" class="knopf">Weiter …</button></div>
+      </form><div class="warnung" id="vs-fehler" hidden></div>` : "");
+    const dl = document.getElementById("vs-download");
+    if (!dl) return;
+    dl.addEventListener("click", async () => {
+      try {
+        if (schutzAktiv()) await herunterladen("datenbank");
+        else window.location.href = `${API}/admin/datenbank-herunterladen`;
+        document.getElementById("vs-download-status").textContent = "erledigt";
+      } catch (err) { schutzFehler("vs-fehler", apiFehlerText(err)); }
+    });
+    document.getElementById("form-vs-ein").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      schutzFehler("vs-fehler", "");
+      const f = e.target;
+      try {
+        const r = await api("/schutz/verschluesselung/vorbereiten", { method: "POST", body: JSON.stringify({
+          passphrase: f.passphrase.value, wiederholung: f.wiederholung.value, mindestlaenge: Number(f.mindestlaenge.value) }) });
+        verschluesselungEinschaltenDialog(r);
+      } catch (err) { schutzFehler("vs-fehler", apiFehlerText(err)); }
+    });
+    return;
+  }
+  ziel.innerHTML = status + grund + (v.stapel ? `<p class="hinweis">${v.stapel} vorgemerkte Buchung(en) warten im Stapel.</p>` : "") + (v.verwalten ? `
+    <h3>Passphrase ändern</h3>
+    <form id="form-vs-pp" class="schutz-formular" autocomplete="off">
+      <div><label>Bisherige Passphrase oder Wiederherstellungsschlüssel</label><input type="password" name="geheimnis"></div>
+      <div><label>Neue Passphrase (mindestens ${v.mindestlaenge} Zeichen)</label><input type="password" name="neu"></div>
+      <div><label>Neue Passphrase wiederholen</label><input type="password" name="wiederholung"></div>
+      <div class="breit reihen-werkzeuge"><button type="submit" class="knopf">Passphrase ändern</button></div>
+    </form>
+    <h3>Mindestlänge der Passphrase</h3>
+    <form id="form-vs-min" class="schutz-formular" autocomplete="off">
+      <div><label>Zeichen (ab ${v.untergrenze})</label><input type="number" name="laenge" min="${v.untergrenze}" max="200" value="${v.mindestlaenge}"></div>
+      <div class="reihen-werkzeuge"><button type="submit" class="knopf">Speichern</button></div>
+    </form>
+    <h3>Ausschalten</h3>
+    <div class="reihen-werkzeuge"><button type="button" class="knopf gefahr" id="vs-aus">Verschlüsselung ausschalten …</button></div>
+    <div class="warnung" id="vs-fehler" hidden></div><div class="hinweis" id="vs-meldung"></div>` : "");
+  if (!v.verwalten) return;
+  const melden = (t) => { document.getElementById("vs-meldung").textContent = t; schutzFehler("vs-fehler", ""); };
+  document.getElementById("form-vs-pp").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api("/schutz/verschluesselung/passphrase", { method: "POST", body: JSON.stringify({
+        geheimnis: f.geheimnis.value, neu: f.neu.value, wiederholung: f.wiederholung.value }) });
+      f.reset(); melden("Passphrase geändert. Die Datenbank musste dafür nicht neu verschlüsselt werden.");
+    } catch (err) { schutzFehler("vs-fehler", apiFehlerText(err)); }
+  });
+  document.getElementById("form-vs-min").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("/schutz/verschluesselung/mindestlaenge", { method: "PUT", body: JSON.stringify({ laenge: Number(e.target.laenge.value) }) });
+      melden("Gespeichert. Gilt für neue Passphrasen und Excel-Kennwörter.");
+    } catch (err) { schutzFehler("vs-fehler", apiFehlerText(err)); }
+  });
+  document.getElementById("vs-aus").addEventListener("click", async () => {
+    try {
+      const p = await api("/schutz/verschluesselung/ausschalten-phrase", { method: "POST" });
+      schutzDialog(`<h2>Verschlüsselung ausschalten</h2>
+        <p class="warnung">${hinweisHtml("sicherheit.ausschalten")}</p>
+        <form id="form-vs-aus" class="formular" autocomplete="off">
+          <div style="grid-column:1/-1"><label>Passphrase oder Wiederherstellungsschlüssel</label><input type="password" name="geheimnis"></div>
+          <div style="grid-column:1/-1"><p>Zur Bestätigung diese Phrase eintippen:</p><div class="reset-phrase">${resetEsc(p.phrase)}</div>
+            <input name="phrase" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Phrase eingeben"></div>
+          <div class="reihen-werkzeuge reset-knoepfe" style="grid-column:1/-1">
+            <button type="button" class="knopf sekundaer" data-schliessen>Abbrechen</button>
+            <button type="submit" class="knopf gefahr">Entschlüsseln</button></div>
+        </form><div class="warnung" id="vs-aus-fehler" hidden></div><div id="vs-aus-ergebnis"></div>`);
+      document.getElementById("form-vs-aus").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const knopf = e.target.querySelector('[type="submit"]');
+        knopf.disabled = true;
+        schutzFehler("vs-aus-fehler", "Wird entschlüsselt …");
+        try {
+          const r = await api("/schutz/verschluesselung/ausschalten", { method: "POST", body: JSON.stringify({
+            geheimnis: e.target.geheimnis.value, token: p.token, phrase: e.target.phrase.value }) });
+          schutzFehler("vs-aus-fehler", "");
+          e.target.remove();
+          document.getElementById("vs-aus-ergebnis").innerHTML = `<h3 style="color:var(--gruen)">Ausgeschaltet</h3>
+            <ul>${r.schritte.map((t) => `<li>${resetEsc(t)}</li>`).join("")}</ul>
+            <div class="reihen-werkzeuge reset-knoepfe"><button type="button" class="knopf" data-schliessen>Schließen</button></div>`;
+          document.querySelectorAll("#vs-aus-ergebnis [data-schliessen]").forEach((k) => k.addEventListener("click", () => document.getElementById("schutz-dialog").close()));
+          await renderSicherheit();
+        } catch (err) { knopf.disabled = false; schutzFehler("vs-aus-fehler", apiFehlerText(err)); }
+      });
+    } catch (err) { schutzFehler("vs-fehler", apiFehlerText(err)); }
+  });
+}
+
+function verschluesselungEinschaltenDialog(v) {
+  schutzDialog(schluesselBestaetigenHtml("Wiederherstellungsschlüssel der Verschlüsselung", v.wiederherstellungsschluessel, `
+    <div style="grid-column:1/-1"><p class="warnung">${hinweisHtml("sicherheit.einschalten")}</p>
+      <p>Zur Bestätigung diese Phrase eintippen:</p><div class="reset-phrase">${resetEsc(v.phrase)}</div>
+      <input name="phrase" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Phrase eingeben"></div>`));
+  document.getElementById("schutz-bestaetigen-los").textContent = "Verschlüsseln";
+  document.getElementById("schutz-drucken").addEventListener("click", () =>
+    schluesselDrucken("Wiederherstellungsschlüssel der Verschlüsselung", v.wiederherstellungsschluessel));
+  document.getElementById("schutz-bestaetigen-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const knopf = document.getElementById("schutz-bestaetigen-los");
+    knopf.disabled = true;
+    schutzFehler("schutz-bestaetigen-fehler", "Wird verschlüsselt und geprüft …");
+    try {
+      const r = await api("/schutz/verschluesselung/einschalten", { method: "POST", body: JSON.stringify({
+        kennung: v.kennung, getippt: e.target.getippt.value, token: v.token, phrase: e.target.phrase.value }) });
+      schutzFehler("schutz-bestaetigen-fehler", "");
+      document.getElementById("schutz-dialog-inhalt").innerHTML = `<h2 style="color:var(--gruen)">Verschlüsselt</h2>
+        <ul>${r.schritte.map((t) => `<li>${resetEsc(t)}</li>`).join("")}</ul>
+        <p class="hinweis">${hinweisHtml("sicherheit.nach-einschalten")}</p>
+        <div class="reihen-werkzeuge reset-knoepfe"><button type="button" class="knopf" data-schliessen>Schließen</button></div>`;
+      document.querySelectorAll("#schutz-dialog [data-schliessen]").forEach((k) => k.addEventListener("click", () => document.getElementById("schutz-dialog").close()));
+      await renderSicherheit();
+    } catch (err) { knopf.disabled = false; schutzFehler("schutz-bestaetigen-fehler", apiFehlerText(err)); }
+  });
+}
+
+async function klaerlisteRendern() {
+  const block = document.getElementById("klaerliste-block");
+  const st = SCHUTZ.status;
+  const liste = await api("/klaerliste");
+  block.hidden = !(st && st.verschluesselung.aktiv) && !liste.length;
+  const ziel = document.getElementById("klaerliste-inhalt");
+  if (!liste.length) { ziel.innerHTML = '<p class="hinweis">Keine offenen Einträge.</p>'; return; }
+  const angaben = (d) => [d.betrag != null ? euro(d.betrag) : null, d.konto || null, d.kategorie || null,
+    d.datum ? d.datum.split("-").reverse().join(".") : null, d.beschreibung || null].filter(Boolean).map(resetEsc).join(" · ");
+  ziel.innerHTML = `<table><thead><tr><th>Erfasst</th><th>Quelle</th><th>Angaben</th><th>Grund</th><th></th></tr></thead><tbody>
+    ${liste.map((e) => `<tr data-klaer="${e.id}"><td>${resetEsc((e.erfasst_am || "").slice(0, 16).replace("T", " "))}</td>
+      <td>${e.quelle === "siri" ? "Siri" : "Schnellbuchung"}</td><td>${angaben(e.daten)}</td><td>${resetEsc(e.grund)}</td>
+      <td class="rechts"><button class="knopf sekundaer klein" data-klaer-buchen="${e.id}">Buchen …</button>
+        <button class="knopf gefahr klein" data-klaer-verwerfen="${e.id}">Verwerfen</button></td></tr>`).join("")}
+    </tbody></table><div id="klaer-formular"></div><div class="warnung" id="klaer-fehler" hidden></div>`;
+  ziel.querySelectorAll("[data-klaer-verwerfen]").forEach((k) => k.addEventListener("click", async () => {
+    await api(`/klaerliste/${k.dataset.klaerVerwerfen}`, { method: "DELETE" });
+    await klaerlisteRendern();
+  }));
+  ziel.querySelectorAll("[data-klaer-buchen]").forEach((k) => k.addEventListener("click", async () => {
+    const e = liste.find((x) => String(x.id) === k.dataset.klaerBuchen);
+    const d = e.daten;
+    await ladeKategorien();
+    const konten = KONTEN.length ? KONTEN : await api("/konten");
+    const kontoId = d.konto_id || (konten.find((x) => x.name.toLowerCase() === String(d.konto || "").toLowerCase()) || {}).id;
+    const katId = d.kategorie_id || (KATEGORIEN.find((x) => x.name.toLowerCase() === String(d.kategorie || "").toLowerCase()) || {}).id;
+    const katOpt = (pid, pre) => KATEGORIEN.filter((x) => x.parent_id === pid).flatMap((x) =>
+      [`<option value="${x.id}" ${x.id === katId ? "selected" : ""}>${pre}${resetEsc(x.name)}</option>`, ...katOpt(x.id, pre + "— ")]).join("");
+    document.getElementById("klaer-formular").innerHTML = `<h3>Eintrag buchen</h3>
+      <form id="form-klaer" class="schutz-formular" autocomplete="off">
+        <div><label>Konto</label><select name="konto_id">${konten.map((x) => `<option value="${x.id}" ${x.id === kontoId ? "selected" : ""}>${resetEsc(x.name)}</option>`).join("")}</select></div>
+        <div><label>Kategorie</label><select name="kategorie_id"><option value="">– bitte wählen –</option>${katOpt(null, "")}</select></div>
+        <div><label>Betrag</label><input type="number" step="0.01" name="betrag" value="${Math.abs(Number(d.betrag || 0))}"></div>
+        <div><label>Datum</label><input type="date" name="datum" value="${resetEsc(d.datum || heuteISO())}"></div>
+        <div class="breit"><label>Beschreibung</label><input name="beschreibung" value="${resetEsc(d.beschreibung || "")}"></div>
+        <div class="breit reihen-werkzeuge"><button type="submit" class="knopf">Buchen</button></div>
+      </form>`;
+    document.getElementById("form-klaer").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const f = ev.target;
+      try {
+        await api(`/klaerliste/${e.id}/buchen`, { method: "POST", body: JSON.stringify({
+          konto_id: Number(f.konto_id.value), kategorie_id: f.kategorie_id.value ? Number(f.kategorie_id.value) : null,
+          betrag: Number(f.betrag.value), datum: f.datum.value, beschreibung: f.beschreibung.value || null,
+          typ: d.typ || "Ist", zielkonto_id: d.zielkonto_id || null, sparziel_id: d.sparziel_id || null }) });
+        await klaerlisteRendern();
+      } catch (err) { schutzFehler("klaer-fehler", apiFehlerText(err)); }
+    });
+  }));
+}

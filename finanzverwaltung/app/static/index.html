@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Private Finanzverwaltung</title>
-<link rel="stylesheet" href="assets/style.css?v=17">
+<link rel="stylesheet" href="assets/style.css?v=18">
 </head>
 <body>
 
@@ -666,6 +666,7 @@
     <div class="admin-tabs">
       <button type="button" class="admin-tab-knopf aktiv" data-admin-tab="stammdaten">Stammdaten</button>
       <button type="button" class="admin-tab-knopf" data-admin-tab="system">System</button>
+      <button type="button" class="admin-tab-knopf" data-admin-tab="sicherheit">Sicherheit</button>
       <button type="button" class="admin-tab-knopf" data-admin-tab="zuruecksetzen">Daten zurücksetzen</button>
     </div>
 
@@ -721,7 +722,7 @@
             <div><label>Buchungen bis (optional)</label><input type="date" id="export-bis"></div>
             <div class="reihen-werkzeuge">
               <button type="button" class="knopf sekundaer klein" id="export-herunterladen">Export herunterladen (xlsx)</button>
-              <a class="knopf sekundaer klein" href="api/admin/import-vorlage" download>Leere Vorlage (xlsx)</a>
+              <button type="button" class="knopf sekundaer klein" id="import-vorlage">Leere Vorlage (xlsx)</button>
             </div>
           </div>
           <form class="formular" id="form-import">
@@ -749,6 +750,8 @@
                 <input type="file" id="import-datei-feld" name="datei" accept=".csv,.xlsx" required style="display:none">
               </div>
             </div>
+            <div><label>Excel-Kennwort (nur bei geschützter Datei)</label>
+              <input type="password" name="kennwort" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></div>
             <div><button class="knopf" type="submit" id="import-pruefen">Prüfen (Vorschau)</button></div>
           </form>
           <div id="import-ergebnis" style="margin-top:14px"></div>
@@ -842,7 +845,7 @@
         <div class="details-inhalt">
           <div class="reihen-werkzeuge" style="margin-bottom:14px">
             <button class="knopf sekundaer klein" id="backup-jetzt">Backup jetzt erstellen</button>
-            <a class="knopf sekundaer klein" href="api/admin/datenbank-herunterladen" download>Datenbank herunterladen</a>
+            <button type="button" class="knopf sekundaer klein" id="db-herunterladen">Datenbank herunterladen</button>
           </div>
           <table><thead><tr><th>Erstellt am</th><th>Dateiname</th><th>Typ</th><th>Beschreibung</th><th></th></tr></thead><tbody id="backups-tabelle"></tbody></table>
         </div>
@@ -856,8 +859,10 @@
             <div class="datei-auswahl">
               <label for="wh-datei-feld" class="knopf sekundaer klein">Datei wählen</label>
               <span id="wh-datei-name" class="hinweis">Keine Datei ausgewählt</span>
-              <input type="file" id="wh-datei-feld" accept=".db,.sqlite,.sqlite3" style="display:none">
+              <input type="file" id="wh-datei-feld" accept=".db,.fvdb,.sqlite,.sqlite3" style="display:none">
             </div>
+            <input type="password" id="wh-geheimnis" placeholder="Passphrase oder Wiederherstellungsschlüssel (nur .fvdb)"
+                   autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" style="min-width:260px">
             <button type="button" class="knopf" id="wh-pruefen" disabled>Prüfen</button>
           </div>
           <div class="warnung" id="wh-status" hidden></div>
@@ -882,6 +887,29 @@
         </div>
       </details>
 
+    </div>
+    <div class="admin-tab-inhalt" data-admin-tab-inhalt="sicherheit">
+      <details class="block" id="sperre-block">
+        <summary><h2 data-hilfe="sicherheit.sperre">Sperre</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="sicherheit.sperre"></p>
+          <div id="sperre-inhalt"></div>
+        </div>
+      </details>
+      <details class="block" id="verschluesselung-block">
+        <summary><h2 data-hilfe="sicherheit.verschluesselung">Verschlüsselung</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="sicherheit.verschluesselung"></p>
+          <div id="verschluesselung-inhalt"></div>
+        </div>
+      </details>
+      <details class="block" id="klaerliste-block" hidden>
+        <summary><h2 data-hilfe="sicherheit.klaerliste">Klärliste</h2></summary>
+        <div class="details-inhalt">
+          <p class="hinweis" data-hinweis="sicherheit.klaerliste"></p>
+          <div id="klaerliste-inhalt"></div>
+        </div>
+      </details>
     </div>
     <div class="admin-tab-inhalt" data-admin-tab-inhalt="zuruecksetzen">
       <div class="block">
@@ -927,11 +955,15 @@
 <dialog id="wh-dialog" class="reset-dialog">
   <div id="wh-dialog-inhalt"></div>
 </dialog>
+<dialog id="schutz-dialog" class="reset-dialog schutz-dialog">
+  <div id="schutz-dialog-inhalt"></div>
+</dialog>
 <dialog id="reset-dialog" class="reset-dialog">
   <div id="reset-dialog-inhalt"></div>
 </dialog>
 
 <script src="assets/vendor/chart.umd.min.js?v=5"></script>
-<script src="assets/app.js?v=22"></script>
+<script src="assets/schutz.js?v=1"></script>
+<script src="assets/app.js?v=23"></script>
 </body>
 </html>

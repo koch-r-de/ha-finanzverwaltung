@@ -38,10 +38,65 @@ def resource_pfad(relativ: str) -> Path:
 DB_PFAD = basis_verzeichnis() / "finanzdaten.db"
 BACKUP_VERZEICHNIS = basis_verzeichnis() / "Backups"
 
+# ─── Verschlüsselung (seit 3.0) ─────────────────────────────────────
+# Ist die Verschlüsselung eingeschaltet, öffnet verbindung() die Datei mit
+# SQLCipher und dem Datenschlüssel aus dem Arbeitsspeicher (gesetzt von
+# tresor.py beim Entsperren). Ohne Verschlüsselung bleibt es beim sqlite3
+# der Standardbibliothek, genau wie bis 2.7.
+try:
+    from sqlcipher3 import dbapi2 as sqlcipher
+except ImportError:  # Entwicklung ohne das Paket: nur unverschlüsselt möglich
+    sqlcipher = None
 
-def verbindung() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PFAD)
-    conn.row_factory = sqlite3.Row
+# Fehlerklassen beider Treiber. sqlcipher3 hat eigene Klassen, die nicht von
+# denen der Standardbibliothek erben.
+FEHLER = (sqlite3.Error,) + ((sqlcipher.Error,) if sqlcipher else ())
+INTEGRITAETSFEHLER = (sqlite3.IntegrityError,) + ((sqlcipher.IntegrityError,) if sqlcipher else ())
+
+_VERSCHLUESSELT = False
+_SCHLUESSEL: bytes | None = None
+
+
+class DatenbankGesperrt(RuntimeError):
+    """Die Datenbank ist verschlüsselt und noch nicht entsperrt."""
+
+
+def verschluesselung_setzen(aktiv: bool, schluessel: bytes | None) -> None:
+    global _VERSCHLUESSELT, _SCHLUESSEL
+    _VERSCHLUESSELT, _SCHLUESSEL = aktiv, schluessel
+
+
+def ist_verschluesselt() -> bool:
+    return _VERSCHLUESSELT
+
+
+def ist_gesperrt() -> bool:
+    return _VERSCHLUESSELT and _SCHLUESSEL is None
+
+
+def oeffnen(pfad, schluessel: bytes | None = None, nur_lesen: bool = False):
+    """Öffnet eine Datenbankdatei, mit Schlüssel über SQLCipher. Der
+    Schlüssel ist ein Rohschlüssel (32 Byte), SQLCipher leitet ihn nicht ab."""
+    if schluessel is None:
+        conn = sqlite3.connect(f"file:{pfad}?mode=ro", uri=True) if nur_lesen else sqlite3.connect(pfad)
+        conn.row_factory = sqlite3.Row
+        return conn
+    if sqlcipher is None:
+        raise RuntimeError("SQLCipher (Paket sqlcipher3-wheels) ist nicht installiert.")
+    conn = sqlcipher.connect(f"file:{pfad}?mode=ro", uri=True) if nur_lesen else sqlcipher.connect(str(pfad))
+    conn.execute("PRAGMA cipher_log_level = NONE")
+    conn.execute(f"PRAGMA key = \"x'{schluessel.hex()}'\"")
+    conn.row_factory = sqlcipher.Row
+    return conn
+
+
+def verbindung():
+    if _VERSCHLUESSELT:
+        if _SCHLUESSEL is None:
+            raise DatenbankGesperrt("Die Datenbank ist verschlüsselt und noch nicht entsperrt.")
+        conn = oeffnen(DB_PFAD, _SCHLUESSEL)
+    else:
+        conn = oeffnen(DB_PFAD)
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 

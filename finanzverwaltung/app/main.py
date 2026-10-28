@@ -9,14 +9,16 @@ klassischen Desktop-Anwendung, auch wenn technisch ein lokaler
 Webserver dahintersteht.
 """
 from datetime import date, datetime
+import json
 import logging
+import secrets
 import os
 import io
 import re
 from typing import Optional
 
 from dateutil.relativedelta import relativedelta
-from fastapi import FastAPI, Form, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -51,6 +53,7 @@ from .core import db as db_modul
 from .core import import_export
 from .core import personen as personen_modul
 from .core import plan_buchungen, startup, vertragsauswertung, wiederherstellen, wiederkehrend, zuruecksetzen
+from .core import schutz, schutzdatei, tresor
 from .core.db import kategorie_id, resource_pfad, verbindung
 from .core import zeit
 
@@ -114,7 +117,84 @@ class HerkunftPruefenMiddleware:
 
 LOG_ZUGRIFF = logging.getLogger("app.zugriff")   # unter "app", damit es im Add-on-Protokoll erscheint
 
+
+class SchutzMiddleware:
+    """Sperre und Verschlüsselung im Server (seit 3.0, Issue #5). Wirkt auf
+    alle Endpunkte, nicht nur in der Oberfläche.
+
+    Frei sind nur die Seiten selbst, Bilder, Skripte, die Hilfe, die
+    Feiertagsliste und die Endpunkte zum Anmelden und Entsperren. Siri und die
+    Erfassung der Schnellbuchung haben eigene Regeln (Entscheidungen 33, 45).
+    Alles andere verlangt bei eingeschalteter Sperre einen freigegebenen
+    Benutzer mit gültiger Sitzung (401 mit schutz=code) und bei verschlossener
+    Datenbank das Entsperren (423 mit schutz=passphrase)."""
+    FREI = {"/", "/schnellbuchung", "/api/hilfe", "/api/hilfe/pdf", "/api/feiertage",
+            "/api/schutz/status", "/api/schutz/anmelden", "/api/schutz/erstcode", "/api/schutz/abmelden",
+            "/api/schutz/wiederherstellen", "/api/schutz/entsperren", "/api/schutz/freigabe-passphrase"}
+    FREI_PRAEFIX = ("/assets/", "/api/hilfe/", "/api/download/")
+    ERFASSEN = {"/api/erfassen/stammdaten", "/api/erfassen/buchung", "/api/erfassen/vorschlag"}
+    SIRI = "/api/siri/buchung"
+    SIRI_HERKUNFT = {"172.30.32.1"}   # Home Assistant selbst (rest_command), wie Befund Q
+
+    def __init__(self, app):
+        self.app = app
+
+    @staticmethod
+    async def _antwort(scope, receive, send, status: int, text: str, art: str):
+        await JSONResponse({"detail": text, "schutz": art}, status_code=status)(scope, receive, send)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        pfad = scope.get("path", "")
+        if pfad in self.FREI or pfad.startswith(self.FREI_PRAEFIX):
+            return await self.app(scope, receive, send)
+        kopf = {k.decode("latin-1").lower(): v.decode("utf-8", "replace") for k, v in scope.get("headers", [])}
+        sperre = schutz.einstellungen()
+        if tresor.umstellung_laeuft():
+            return await self._antwort(scope, receive, send, 503, "Die Verschlüsselung wird gerade umgestellt. "
+                                       "Bitte kurz warten.", "umstellung")
+        b = schutz.benutzer(kopf)
+        if b["id"]:
+            schutz.bekannt_merken(b)
+        if pfad == self.SIRI:
+            herkunft = (scope.get("client") or ("?", 0))[0]
+            if sperre and herkunft not in self.SIRI_HERKUNFT:
+                return await self._antwort(scope, receive, send, 403, "Siri-Buchungen nur über Home Assistant.",
+                                           "herkunft")
+            return await self._weiter(scope, receive, send)
+        if sperre:
+            if not schutz.freigegeben(b["id"], sperre):
+                return await self._antwort(scope, receive, send, 403, "Dieser Benutzer ist für die "
+                                           "Finanzverwaltung nicht freigegeben.", "nicht_freigegeben")
+            ohne_code = pfad in self.ERFASSEN and sperre.get("schnellbuchung") == "nur_erfassen"
+            if not ohne_code and not schutz.sitzung_gueltig(kopf.get(schutz.KOPF_SITZUNG), b["id"]):
+                return await self._antwort(scope, receive, send, 401, "Bitte den Code eingeben.", "code")
+        if pfad in self.ERFASSEN:
+            return await self._weiter(scope, receive, send)
+        if tresor.gesperrt():
+            return await self._antwort(scope, receive, send, 423, "Die Datenbank ist verschlüsselt. "
+                                       "Bitte mit der Passphrase entsperren.", "passphrase")
+        return await self._weiter(scope, receive, send)
+
+    async def _weiter(self, scope, receive, send):
+        """Nach jeder erfolgreichen Änderung den Auszug für Siri und die
+        Schnellbuchung erneuern, solange die Verschlüsselung an ist."""
+        if scope.get("method") in ("GET", "HEAD") or not tresor.aktiv():
+            return await self.app(scope, receive, send)
+        status = {}
+
+        async def senden(nachricht):
+            if nachricht["type"] == "http.response.start":
+                status["code"] = nachricht["status"]
+            await send(nachricht)
+        await self.app(scope, receive, senden)
+        if status.get("code", 500) < 400 and not tresor.gesperrt():
+            from starlette.concurrency import run_in_threadpool
+            await run_in_threadpool(tresor.auszug_schreiben)
+
 app = FastAPI(title="Private Finanzverwaltung")
+app.add_middleware(SchutzMiddleware)
 app.add_middleware(PfadNormalisierenMiddleware)
 app.add_middleware(HerkunftPruefenMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -143,8 +223,21 @@ STARTUP_ERGEBNIS: dict = {}
 
 @app.on_event("startup")
 def beim_start():
+    """Seit 3.0: Bei eingeschalteter Verschlüsselung läuft der Programmstart
+    (Migrationen, fällige Buchungen, Plan → Ist, Backup) erst beim Entsperren."""
     global STARTUP_ERGEBNIS
+    schutzdatei.neu_laden()
+    schutz.sitzungen_beenden()
+    if tresor.beim_start():
+        STARTUP_ERGEBNIS = {"gesperrt": True, "migration": []}
+        logging.getLogger("app.schutz").info("Datenbank verschlüsselt, Programmstart wartet auf das Entsperren")
+        return
     STARTUP_ERGEBNIS = startup.ausfuehren()
+
+
+@app.exception_handler(db_modul.DatenbankGesperrt)
+def _datenbank_gesperrt(request, fehler):
+    return JSONResponse({"detail": str(fehler), "schutz": "passphrase"}, status_code=423)
 
 
 def db():
@@ -406,33 +499,39 @@ def api_buchungen(konto_id: Optional[int] = None, von: Optional[str] = None,
         conn.close()
 
 
+def _buchung_pruefen_und_anlegen(conn, payload: BuchungIn, mit_regeln: bool = True) -> dict:
+    """Prüfungen und Anlage wie POST /api/buchungen, mit offener Verbindung
+    (seit 3.0 auch für Stapel und Klärliste, dort ohne Regeln)."""
+    kategorie = payload.kategorie_id
+    auto_kategorie = None
+    if kategorie is None and payload.typ != "Uebertragung" and mit_regeln:
+        kategorie = buchungen.kategorie_vorschlagen(conn, payload.beschreibung)
+        auto_kategorie = kategorie
+    if kategorie is None and payload.typ != "Uebertragung":
+        raise HTTPException(400, "Kategorie fehlt und konnte nicht automatisch ermittelt werden.")
+
+    fehler = buchungen.sparziel_pruefen(conn, payload.typ, payload.konto_id, payload.zielkonto_id,
+                                        payload.sparziel_id)
+    if fehler:
+        raise HTTPException(422, fehler)
+
+    duplikat = buchungen.moegliches_duplikat(
+        conn, payload.konto_id, _parse_datum(payload.datum), payload.betrag)
+
+    buchung_id = buchungen.buchung_anlegen(
+        conn, konto_id=payload.konto_id, datum=_parse_datum(payload.datum),
+        betrag=payload.betrag, kategorie_id=kategorie, typ=payload.typ,
+        beschreibung=payload.beschreibung, zielkonto_id=payload.zielkonto_id,
+        sparziel_id=payload.sparziel_id,
+    )
+    return {"id": buchung_id, "duplikat": duplikat, "auto_kategorie": auto_kategorie}
+
+
 @app.post("/api/buchungen")
 def api_buchung_anlegen(payload: BuchungIn):
     conn = verbindung()
     try:
-        kategorie = payload.kategorie_id
-        auto_kategorie = None
-        if kategorie is None and payload.typ != "Uebertragung":
-            kategorie = buchungen.kategorie_vorschlagen(conn, payload.beschreibung)
-            auto_kategorie = kategorie
-        if kategorie is None and payload.typ != "Uebertragung":
-            raise HTTPException(400, "Kategorie fehlt und konnte nicht automatisch ermittelt werden.")
-
-        fehler = buchungen.sparziel_pruefen(conn, payload.typ, payload.konto_id, payload.zielkonto_id,
-                                            payload.sparziel_id)
-        if fehler:
-            raise HTTPException(422, fehler)
-
-        duplikat = buchungen.moegliches_duplikat(
-            conn, payload.konto_id, _parse_datum(payload.datum), payload.betrag)
-
-        buchung_id = buchungen.buchung_anlegen(
-            conn, konto_id=payload.konto_id, datum=_parse_datum(payload.datum),
-            betrag=payload.betrag, kategorie_id=kategorie, typ=payload.typ,
-            beschreibung=payload.beschreibung, zielkonto_id=payload.zielkonto_id,
-            sparziel_id=payload.sparziel_id,
-        )
-        return {"id": buchung_id, "duplikat": duplikat, "auto_kategorie": auto_kategorie}
+        return _buchung_pruefen_und_anlegen(conn, payload)
     except ValueError as e:
         raise HTTPException(400, str(e))
     finally:
@@ -1182,10 +1281,12 @@ class WiederherstellenIn(BaseModel):
 
 
 @app.post("/api/admin/wiederherstellen/hochladen")
-def api_wiederherstellen_hochladen(datei: UploadFile):
-    """Schritt 1 für eine hochgeladene Datei: prüfen, Kennzahlen, Phrase."""
+def api_wiederherstellen_hochladen(datei: UploadFile, geheimnis: Optional[str] = Form(None)):
+    """Schritt 1 für eine hochgeladene Datei: prüfen, Kennzahlen, Phrase.
+    geheimnis (seit 3.0): Passphrase oder Wiederherstellungsschlüssel für
+    einen verschlüsselten Download (.fvdb)."""
     try:
-        return wiederherstellen.upload_vorbereiten(datei.file, datei.filename or "")
+        return wiederherstellen.upload_vorbereiten(datei.file, datei.filename or "", geheimnis)
     except wiederherstellen.WiederherstellenFehler as e:
         raise HTTPException(422, str(e))
 
@@ -1226,6 +1327,14 @@ def api_datenbank_herunterladen():
     if not db_modul.DB_PFAD.exists():
         raise HTTPException(404, "Noch keine Datenbank vorhanden.")
     zeitstempel = zeit.heute().isoformat()
+    if tresor.aktiv():
+        # Seit 3.0 (Entscheidung 46): verschlüsselt mit Schlüsselkopf (.fvdb)
+        kopf = tresor.download_kopf()
+        inhalt = db_modul.DB_PFAD.read_bytes()
+        return StreamingResponse(iter([kopf, inhalt]), media_type="application/octet-stream",
+                                 headers={"Content-Disposition":
+                                          f"attachment; filename=finanzdaten_{zeitstempel}_verschluesselt.fvdb"})
+    tresor.klartext_download_merken()
     return FileResponse(
         str(db_modul.DB_PFAD),
         media_type="application/octet-stream",
@@ -1256,11 +1365,117 @@ def api_import_vorlage():
         conn.close()
 
 
+class DownloadIn(BaseModel):
+    art: str
+    von: Optional[str] = None
+    bis: Optional[str] = None
+    kennwort: Optional[str] = None
+    wiederholung: Optional[str] = None
+    token: Optional[str] = None
+    phrase: Optional[str] = None
+
+
+_DOWNLOADS: dict[str, dict] = {}
+_DOWNLOAD_GUELTIG = 120
+
+
+@app.post("/api/admin/download")
+def api_download_vorbereiten(payload: DownloadIn):
+    """Seit 3.0: Downloads der Oberfläche bei Sperre oder Verschlüsselung.
+    Der Inhalt wird hier erzeugt (Kennwort und Phrase nur im Rumpf, nie in der
+    Adresse) und unter einem einmaligen Ticket für 2 Minuten bereitgehalten.
+    Der Browser holt ihn dann über GET /api/download/<ticket> als normalen
+    Download, wie bis 2.7 über einen Link.
+
+    art: datenbank (bei Verschlüsselung als .fvdb, Entscheidung 46),
+         datenbank_klartext (nur mit Phrase), export (bei Verschlüsselung mit
+         Excel-Kennwort, Entscheidung 47), export_klartext (nur mit Phrase),
+         import_vorlage."""
+    from . import roundtrip
+    heute = zeit.heute().isoformat()
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if payload.art in ("datenbank_klartext", "export_klartext"):
+        if not tresor.aktiv():
+            raise HTTPException(409, "Die Verschlüsselung ist aus. Bitte den normalen Download verwenden.")
+        try:
+            zuruecksetzen.phrase_pruefen(payload.token, payload.phrase,
+                                         {"klartext": payload.art.split("_")[0]})
+        except zuruecksetzen.ZuruecksetzenFehler as e:
+            raise HTTPException(422, str(e))
+    if payload.art in ("datenbank", "datenbank_klartext"):
+        if not db_modul.DB_PFAD.exists():
+            raise HTTPException(404, "Noch keine Datenbank vorhanden.")
+        if payload.art == "datenbank_klartext":
+            ordner = db_modul.BACKUP_VERZEICHNIS / ".export"
+            ordner.mkdir(parents=True, exist_ok=True)
+            ziel = ordner / f"{os.urandom(8).hex()}.db"
+            try:
+                tresor.klartext_kopie(ziel)
+                inhalt = ziel.read_bytes()
+            finally:
+                ziel.unlink(missing_ok=True)
+            LOG_SCHUTZ.info("Unverschlüsselter Datenbank-Download nach Bestätigung")
+            name, typ = f"finanzdaten_{heute}_UNVERSCHLUESSELT.db", "application/octet-stream"
+        elif tresor.aktiv():
+            inhalt = tresor.download_kopf() + db_modul.DB_PFAD.read_bytes()
+            name, typ = f"finanzdaten_{heute}_verschluesselt.fvdb", "application/octet-stream"
+        else:
+            tresor.klartext_download_merken()
+            inhalt = db_modul.DB_PFAD.read_bytes()
+            name, typ = f"finanzdaten_{heute}.db", "application/octet-stream"
+    elif payload.art in ("export", "export_klartext", "import_vorlage"):
+        conn = verbindung()
+        try:
+            puffer = io.BytesIO()
+            if payload.art == "import_vorlage":
+                roundtrip.export_workbook(conn, leer=True).save(puffer)
+                name = "finanzverwaltung_vorlage.xlsx"
+            else:
+                von_iso = _parse_datum(payload.von).isoformat() if payload.von else None
+                bis_iso = _parse_datum(payload.bis).isoformat() if payload.bis else None
+                roundtrip.export_workbook(conn, von_iso, bis_iso).save(puffer)
+                name = f"finanzverwaltung_export_{heute}.xlsx"
+        finally:
+            conn.close()
+        inhalt, typ = puffer.getvalue(), xlsx
+        if payload.art == "export" and tresor.aktiv():
+            laenge = tresor.mindestlaenge()
+            if len(payload.kennwort or "") < laenge:
+                raise HTTPException(422, f"Das Excel-Kennwort muss mindestens {laenge} Zeichen lang sein.")
+            if payload.kennwort != payload.wiederholung:
+                raise HTTPException(422, "Die beiden Eingaben des Excel-Kennworts stimmen nicht überein.")
+            inhalt = tresor.xlsx_verschluesseln(inhalt, payload.kennwort)
+        elif payload.art == "export_klartext":
+            LOG_SCHUTZ.info("Unverschlüsselter XLSX-Export nach Bestätigung")
+    else:
+        raise HTTPException(422, "Unbekannte Art des Downloads.")
+    jetzt = schutzdatei.uhr()
+    for t in [t for t, d in _DOWNLOADS.items() if d["bis"] < jetzt]:
+        del _DOWNLOADS[t]
+    ticket = secrets.token_urlsafe(24)
+    _DOWNLOADS[ticket] = {"inhalt": inhalt, "name": name, "typ": typ, "bis": jetzt + _DOWNLOAD_GUELTIG}
+    return {"ticket": ticket, "name": name}
+
+
+@app.get("/api/download/{ticket}")
+def api_download(ticket: str):
+    """Einmalig, 2 Minuten gültig. Frei in der Middleware, das Ticket ist die
+    Berechtigung (24 zufällige Byte)."""
+    d = _DOWNLOADS.pop(ticket, None)
+    if not d or d["bis"] < schutzdatei.uhr():
+        raise HTTPException(404, "Der Download ist abgelaufen. Bitte erneut starten.")
+    return StreamingResponse(iter([d["inhalt"]]), media_type=d["typ"],
+                             headers={"Content-Disposition": f"attachment; filename={d['name']}"})
+
+
 @app.get("/api/admin/export")
 def api_export(von: Optional[str] = None, bis: Optional[str] = None):
     """XLSX-Roundtrip (seit v2.0): aktueller Datenbestand aller Bereiche,
     Buchungen optional im Zeitraum von/bis."""
     from . import roundtrip
+    if tresor.aktiv():
+        raise HTTPException(409, "Die Verschlüsselung ist an. Der Export braucht ein Excel-Kennwort "
+                                 "oder eine Bestätigung.")
     von_iso = _parse_datum(von).isoformat() if von else None
     bis_iso = _parse_datum(bis).isoformat() if bis else None
     conn = verbindung()
@@ -1272,13 +1487,19 @@ def api_export(von: Optional[str] = None, bis: Optional[str] = None):
 
 
 @app.post("/api/admin/import/vorschau")
-async def api_import_vorschau(datei: UploadFile, art: Optional[str] = Form(None)):
+async def api_import_vorschau(datei: UploadFile, art: Optional[str] = Form(None),
+                              kennwort: Optional[str] = Form(None)):
     """Schritt 1 des Imports (seit v2.0): prüft die Datei vollständig (inkl.
     aller Folgeprüfungen) ohne etwas zu speichern und liefert je Tab neu/
     geändert/gelöscht/unverändert/Fehler. Ohne Fehler gibt es ein Token für
-    die Übernahme."""
+    die Übernahme. Seit 3.0 auch XLSX mit Excel-Kennwort."""
     from . import roundtrip
     rohbytes = await datei.read()
+    if tresor.xlsx_ist_verschluesselt(rohbytes):
+        try:
+            rohbytes = tresor.xlsx_entschluesseln(rohbytes, kennwort)
+        except tresor.TresorFehler as e:
+            raise HTTPException(400, str(e))
     conn = verbindung()
     try:
         return roundtrip.vorschau(conn, datei.filename or "", rohbytes, art)
@@ -1348,11 +1569,14 @@ def api_feiertage(von_jahr: Optional[int] = None, bis_jahr: Optional[int] = None
     bis_jahr = bis_jahr or von_jahr
     if not (1900 <= von_jahr <= bis_jahr <= 9998) or bis_jahr - von_jahr >= FEIERTAGE_MAX_JAHRE:
         raise HTTPException(422, f"Jahre von 1900 bis 9998, höchstens {FEIERTAGE_MAX_JAHRE} Jahre auf einmal.")
-    conn = verbindung()
-    try:
-        region = feiertage_modul.gewaehlte_region(conn)
-    finally:
-        conn.close()
+    if tresor.gesperrt():   # seit 3.0: Region aus dem Auszug, solange die Datenbank zu ist
+        region = tresor.auszug_lesen().get("bundesland") or ""
+    else:
+        conn = verbindung()
+        try:
+            region = feiertage_modul.gewaehlte_region(conn)
+        finally:
+            conn.close()
     return {"region": region, "region_name": feiertage_modul.REGION_NAMEN.get(region, ""),
             "tage": feiertage_modul.feiertage_liste(region, von_jahr, bis_jahr)}
 
@@ -1785,7 +2009,7 @@ class SiriBuchungIn(BaseModel):
     datum: Optional[Datum] = None
 
 
-def _siri_eindeutig(eintraege, suchtext: str, art: str):
+def _siri_eindeutig(eintraege, suchtext: str, art: str, knapp: bool = False):
     """Zweistufige Auflösung ohne stillen Fallback (seit v1.8 verschärft):
     exakter Name (ohne Groß-/Kleinschreibung), sonst ein EINDEUTIGER
     Teiltreffer. Mehrere Treffer oder keiner -> klare Fehlermeldung."""
@@ -1795,6 +2019,8 @@ def _siri_eindeutig(eintraege, suchtext: str, art: str):
         if len(treffer) == 1:
             return treffer[0]
         if len(treffer) > 1:
+            if knapp:   # seit 3.0 bei Sperre: keine gespeicherten Namen in der Antwort
+                raise HTTPException(400, f"{art} „{suchtext}“ ist mehrdeutig.")
             namen = ", ".join(sorted({
                 f"{e['eltern']} › {e['name']}" if "eltern" in e.keys() and e["eltern"] else e["name"]
                 for e in treffer}))
@@ -1802,23 +2028,67 @@ def _siri_eindeutig(eintraege, suchtext: str, art: str):
     raise HTTPException(400, f"{art} „{suchtext}“ nicht gefunden.")
 
 
+def _siri_vormerken(payload: SiriBuchungIn) -> dict:
+    """Datenbank verschlüsselt und zu (seit 3.0, Entscheidungen 29 und 48):
+    vormerken im Stapel. Kategorie ist Pflicht, weil die Regeln gesperrt nicht
+    lesbar sind. Was sich im Auszug nicht eindeutig findet, wird trotzdem
+    angenommen und landet beim Entsperren in der Klärliste."""
+    if not payload.konto:
+        raise HTTPException(400, "Kein Konto angegeben - bitte im Kurzbefehl ein Konto mitschicken.")
+    if not payload.kategorie:
+        raise HTTPException(400, "Bitte eine Kategorie nennen. Die Datenbank ist verschlüsselt, ohne Entsperren "
+                                 "greifen keine Kategorisierungsregeln.")
+    auszug = tresor.auszug_lesen()
+    offen = []
+    for liste, text, art in ((auszug["konten"], payload.konto, "Konto"),
+                             (auszug["kategorien"], payload.kategorie, "Kategorie")):
+        try:
+            _siri_eindeutig(liste, text, art)
+        except HTTPException:
+            offen.append(art)
+    datum = _parse_datum(payload.datum) or zeit.heute()
+    tresor.stapel_ablegen({"quelle": "siri", "konto": payload.konto, "kategorie": payload.kategorie,
+                           "betrag": payload.betrag, "beschreibung": payload.beschreibung,
+                           "datum": datum.isoformat()})
+    meldung = f"{abs(payload.betrag):.2f} Euro vorgemerkt, gebucht wird beim Entsperren."
+    if offen:
+        meldung += f" {' und '.join(offen)} nicht eindeutig, der Eintrag kommt in die Klärliste."
+    hinweis = feiertage_modul.datum_hinweis(datum, auszug.get("bundesland") or "")
+    return {"vorgemerkt": True, "meldung": meldung,
+            "feiertagshinweis": feiertage_modul.hinweis_text(hinweis) if hinweis else None}
+
+
 @app.post("/api/siri/buchung")
 def api_siri_buchung(payload: SiriBuchungIn):
-    conn = verbindung()
+    """Seit 3.0: Bei eingeschalteter Sperre nur von Home Assistant
+    (Middleware) und mit einer Antwort ohne gespeicherte Daten (Entscheidung
+    45). Bei verschlossener Datenbank in den Stapel."""
+    if db_modul.ist_gesperrt():
+        return _siri_vormerken(payload)
+    if schutz.aktiv():
+        ergebnis = _siri_buchen(payload, knapp=True)
+        return {"meldung": f"{abs(ergebnis['betrag']):.2f} Euro gebucht.",
+                "feiertagshinweis": ergebnis["feiertagshinweis"]}
+    return _siri_buchen(payload)
+
+
+def _siri_buchen(payload: SiriBuchungIn, conn=None, knapp: bool = False) -> dict:
+    eigene = conn is None
+    conn = conn or verbindung()
     try:
         konten = buchungen.konten_liste(conn)
         if not konten:
             raise HTTPException(400, "Es ist noch kein Konto angelegt.")
         if not payload.konto:
             raise HTTPException(400, "Kein Konto angegeben - bitte im Kurzbefehl ein Konto mitschicken.")
-        konto = _siri_eindeutig(konten, payload.konto, "Konto")
+        konto = _siri_eindeutig(konten, payload.konto, "Konto", knapp)
 
         if payload.kategorie:
             # Angegebene Kategorie muss eindeutig erkannt werden - kein
             # stiller Rückgriff auf die Kategorisierungsregeln (seit v1.8).
             alle = conn.execute("""SELECT k.id, k.name, e.name AS eltern FROM kategorien k
                                    LEFT JOIN kategorien e ON e.id = k.parent_id""").fetchall()
-            kategorie_id = _siri_eindeutig(alle, payload.kategorie, "Kategorie")["id"]
+            kategorie_id = _siri_eindeutig(alle, payload.kategorie, "Kategorie", knapp)["id"]
         else:
             kategorie_id = buchungen.kategorie_vorschlagen(conn, payload.beschreibung or "")
             if kategorie_id is None:
@@ -1841,7 +2111,8 @@ def api_siri_buchung(payload: SiriBuchungIn):
             "feiertagshinweis": feiertage_modul.hinweis_text(hinweis) if hinweis else None,
         }
     finally:
-        conn.close()
+        if eigene:
+            conn.close()
 
 
 # ─── Jahresübersicht ────────────────────────────────────────────────
@@ -2198,6 +2469,526 @@ def api_hilfe_bild(name: str):
 
 
 # ─── Frontend ausliefern ────────────────────────────────────────────
+
+# ─── Sperre und Verschlüsselung (seit 3.0, Issue #5) ─────────────────
+# Regeln im Server: SchutzMiddleware oben. Hier die Endpunkte zum Anmelden,
+# Entsperren und Verwalten. Begründungen in DOCS.md, „Neu in Version 3.0“.
+
+LOG_SCHUTZ = logging.getLogger("app.schutz")
+
+
+def _kopf(request: Request) -> dict:
+    return {k.lower(): v for k, v in request.headers.items()}
+
+
+def _benutzer(request: Request) -> dict:
+    return schutz.benutzer(_kopf(request))
+
+
+def _sitzungstoken(request: Request) -> Optional[str]:
+    return request.headers.get("x-finanz-sitzung")
+
+
+def _schutzfehler(e: Exception):
+    if isinstance(e, schutz.SperreFehler):
+        raise HTTPException(e.status, str(e))
+    raise HTTPException(422, str(e))
+
+
+def _verwalter(request: Request) -> dict:
+    b = _benutzer(request)
+    try:
+        schutz.verwalter_pruefen(b, _sitzungstoken(request))
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+    return b
+
+
+@app.get("/api/schutz/status")
+def api_schutz_status(request: Request):
+    """Für Sperrbildschirm und Schnellbuchung, ohne Anmeldung lesbar. Nennt
+    nur, was zum Entsperren nötig ist."""
+    b = _benutzer(request)
+    if b["id"]:
+        schutz.bekannt_merken(b)
+    s = schutz.einstellungen()
+    sperre = {"aktiv": bool(s)}
+    if s:
+        frei = schutz.freigegeben(b["id"], s)
+        code = schutz.code_von(b["id"], s) if frei else None
+        stand = schutz.fehlversuche(b["id"]) if frei else {"anzahl": 0, "warten": 0, "dauerhaft": False}
+        sperre.update({
+            "freigegeben": frei, "code_gesetzt": bool(code), "art": (code or {}).get("art"),
+            "modus": s["modus"],
+            "sitzung": frei and schutz.sitzung_gueltig(_sitzungstoken(request), b["id"], verlaengern=False),
+            "auto_minuten": s["auto_minuten"], "auto_hintergrund": s["auto_hintergrund"],
+            "schnellbuchung": s["schnellbuchung"], "mindest": schutz.mindestlaengen(s), **stand})
+    v = tresor.einstellungen()
+    return {
+        "version": os.environ.get("FINANZAPP_VERSION", "dev"),
+        "benutzer": {"name": b["name"], "admin": b["admin"], "erkannt": bool(b["id"])},
+        "sperre": sperre,
+        "verschluesselung": {"aktiv": bool(v), "gesperrt": tresor.gesperrt(),
+                             "mindestlaenge": tresor.mindestlaenge() if v else None,
+                             "warten": schutzdatei.fehlversuche("passphrase")["warten"] if v else 0},
+        "umstellung": tresor.umstellung_laeuft(),
+    }
+
+
+class CodeIn(BaseModel):
+    code: str
+
+
+class ErstcodeIn(BaseModel):
+    art: str
+    code: str
+    wiederholung: str
+
+
+class SchluesselIn(BaseModel):
+    schluessel: str
+
+
+class PassphraseIn(BaseModel):
+    passphrase: str
+
+
+@app.post("/api/schutz/anmelden")
+def api_schutz_anmelden(request: Request, payload: CodeIn):
+    try:
+        return {"sitzung": schutz.anmelden(_benutzer(request), payload.code)}
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+
+
+@app.post("/api/schutz/erstcode")
+def api_schutz_erstcode(request: Request, payload: ErstcodeIn):
+    try:
+        return {"sitzung": schutz.erstcode_setzen(_benutzer(request), payload.art, payload.code, payload.wiederholung)}
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+
+
+@app.get("/api/schutz/puls")
+def api_schutz_puls():
+    """Hält die Sitzung bei Tätigkeit ohne Serveranfragen am Leben (die
+    Middleware verlängert sie bei jeder geprüften Anfrage)."""
+    return {"ok": True}
+
+
+@app.post("/api/schutz/abmelden")
+def api_schutz_abmelden(request: Request):
+    schutz.sitzung_beenden(_sitzungstoken(request))
+    return {"ok": True}
+
+
+@app.post("/api/schutz/wiederherstellen")
+def api_schutz_wiederherstellen(request: Request, payload: SchluesselIn):
+    try:
+        return {"sitzung": schutz.wiederherstellen(_benutzer(request), payload.schluessel)}
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+
+
+@app.post("/api/schutz/freigabe-passphrase")
+def api_schutz_freigabe_passphrase(request: Request, payload: PassphraseIn):
+    if not tresor.aktiv():
+        raise HTTPException(409, "Die Verschlüsselung ist nicht eingeschaltet.")
+    if tresor.gesperrt():
+        raise HTTPException(423, "Bitte die Datenbank entsperren.")
+    try:
+        return {"sitzung": schutz.mit_passphrase_freigeben(_benutzer(request), payload.passphrase)}
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+
+
+class EntsperrenIn(BaseModel):
+    geheimnis: str
+    neue_passphrase: Optional[str] = None
+    wiederholung: Optional[str] = None
+
+
+def _stapel_buchen(conn, eintrag: dict) -> None:
+    """Bucht einen Stapel-Eintrag nach dem Entsperren mit denselben Prüfungen
+    wie Siri bzw. die Schnellbuchung."""
+    if eintrag.get("quelle") == "siri":
+        payload = SiriBuchungIn(betrag=eintrag["betrag"], konto=eintrag.get("konto"),
+                                kategorie=eintrag.get("kategorie"), beschreibung=eintrag.get("beschreibung"),
+                                datum=eintrag.get("datum"))
+        _siri_buchen(payload, conn)
+        return
+    payload = BuchungIn(**{k: eintrag.get(k) for k in BuchungIn.model_fields if k in eintrag})
+    _buchung_pruefen_und_anlegen(conn, payload, mit_regeln=False)
+
+
+def _nach_entsperren() -> dict:
+    """Was sonst beim Programmstart läuft, läuft jetzt (Entscheidung 28)."""
+    global STARTUP_ERGEBNIS
+    STARTUP_ERGEBNIS = startup.ausfuehren()
+    stapel = tresor.stapel_abarbeiten(_stapel_buchen)
+    tresor.auszug_schreiben()
+    return {"start": STARTUP_ERGEBNIS, "stapel": stapel}
+
+
+@app.post("/api/schutz/entsperren")
+def api_schutz_entsperren(request: Request, payload: EntsperrenIn):
+    b = _benutzer(request)
+    s = schutz.einstellungen()
+    if s and not schutz.freigegeben(b["id"], s):
+        raise HTTPException(403, "Dieser Benutzer ist für die Finanzverwaltung nicht freigegeben.")
+    if not tresor.gesperrt():
+        raise HTTPException(409, "Die Datenbank ist bereits entsperrt.")
+    try:
+        schritte = tresor.entsperren(payload.geheimnis, payload.neue_passphrase, payload.wiederholung)
+    except tresor.TresorFehler as e:
+        raise HTTPException(401 if "stimmt nicht" in str(e) else 422, str(e))
+    ergebnis = {"schritte": schritte, **_nach_entsperren()}
+    if s:   # Die Passphrase gibt zugleich die Sperre frei (Entscheidung 32)
+        schutzdatei.fehlversuche_loeschen(f"code:{b['id']}")
+        ergebnis["sitzung"] = schutz.sitzung_anlegen(b["id"])
+    return ergebnis
+
+
+# Sperre verwalten
+
+class SperreEinstellungenIn(BaseModel):
+    modus: Optional[str] = None
+    grenze: Optional[int] = None
+    auto_minuten: Optional[int] = None
+    auto_hintergrund: Optional[bool] = None
+    schnellbuchung: Optional[str] = None
+    mindest: Optional[dict] = None
+
+
+class SperreVorbereitenIn(BaseModel):
+    einstellungen: SperreEinstellungenIn
+    art: str
+    code: str
+    wiederholung: str
+
+
+class EinschaltenIn(BaseModel):
+    kennung: str
+    getippt: str
+    token: Optional[str] = None
+    phrase: Optional[str] = None
+
+
+class BenutzerIn(BaseModel):
+    id: str
+
+
+class CodeAendernIn(BaseModel):
+    alter_code: str
+    art: str
+    code: str
+    wiederholung: str
+
+
+@app.get("/api/schutz/sperre")
+def api_sperre_uebersicht(request: Request):
+    b = _benutzer(request)
+    try:
+        schutz.verwalter_pruefen(b, _sitzungstoken(request))
+        grund = None
+    except schutz.SperreFehler as e:
+        grund = str(e)
+    return {**schutz.uebersicht(), "ich": b["id"], "verwalten": grund is None, "grund": grund,
+            "herkunft_modus": schutz.herkunft_modus()}
+
+
+@app.post("/api/schutz/sperre/vorbereiten")
+def api_sperre_vorbereiten(request: Request, payload: SperreVorbereitenIn):
+    b = _verwalter(request)
+    try:
+        return schutz.einschalten_vorbereiten(b, payload.einstellungen.model_dump(exclude_none=True),
+                                              payload.art, payload.code, payload.wiederholung)
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+
+
+@app.post("/api/schutz/sperre/einschalten")
+def api_sperre_einschalten(request: Request, payload: EinschaltenIn):
+    b = _verwalter(request)
+    try:
+        return {"sitzung": schutz.einschalten_ausfuehren(b, payload.kennung, payload.getippt)}
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+
+
+@app.put("/api/schutz/sperre")
+def api_sperre_aendern(request: Request, payload: SperreEinstellungenIn):
+    _verwalter(request)
+    try:
+        return schutz.einstellungen_aendern(payload.model_dump(exclude_none=True))
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+
+
+@app.post("/api/schutz/sperre/benutzer")
+def api_sperre_benutzer_freigeben(request: Request, payload: BenutzerIn):
+    _verwalter(request)
+    if not schutz.aktiv():
+        raise HTTPException(409, "Die Sperre ist nicht eingeschaltet.")
+    try:
+        schutz.benutzer_freigeben(payload.id)
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+    return {"ok": True}
+
+
+@app.delete("/api/schutz/sperre/benutzer/{benutzer_id}")
+def api_sperre_benutzer_entfernen(request: Request, benutzer_id: str):
+    b = _verwalter(request)
+    try:
+        schutz.benutzer_entfernen(b, benutzer_id)
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+    return {"ok": True}
+
+
+@app.post("/api/schutz/sperre/benutzer/{benutzer_id}/entsperren")
+def api_sperre_benutzer_entsperren(request: Request, benutzer_id: str):
+    """Freigabe durch einen anderen freigegebenen Benutzer (Entscheidung 32).
+    Die Middleware hat Freigabeliste und Sitzung schon geprüft."""
+    b = _benutzer(request)
+    if benutzer_id == b["id"]:
+        raise HTTPException(422, "Die eigene Sperre hebt ein anderer Benutzer auf.")
+    try:
+        schutz.benutzer_entsperren(benutzer_id)
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+    return {"ok": True}
+
+
+@app.post("/api/schutz/sperre/code")
+def api_sperre_code_aendern(request: Request, payload: CodeAendernIn):
+    b = _benutzer(request)
+    s = schutz.einstellungen()
+    if s and s["modus"] == "gemeinsam":
+        b = _verwalter(request)
+    try:
+        schutz.code_aendern(b, payload.alter_code, payload.art, payload.code, payload.wiederholung)
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+    return {"ok": True}
+
+
+@app.post("/api/schutz/sperre/ausschalten")
+def api_sperre_ausschalten(request: Request, payload: CodeIn):
+    b = _verwalter(request)
+    try:
+        schutz.ausschalten(b, payload.code)
+    except schutz.SperreFehler as e:
+        _schutzfehler(e)
+    return {"ok": True}
+
+
+# Verschlüsselung verwalten
+
+class VerschluesselungVorbereitenIn(BaseModel):
+    passphrase: str
+    wiederholung: str
+    mindestlaenge: Optional[int] = None
+
+
+class AusschaltenIn(BaseModel):
+    geheimnis: str
+    token: str
+    phrase: str
+
+
+class PassphraseAendernIn(BaseModel):
+    geheimnis: str
+    neu: str
+    wiederholung: str
+
+
+class MindestlaengeIn(BaseModel):
+    laenge: int
+
+
+def _backup_mit_beschreibung(beschreibung: str) -> str:
+    conn = verbindung()
+    try:
+        return backup.backup_erstellen(conn, "manuell", beschreibung=beschreibung)
+    finally:
+        conn.close()
+
+
+@app.get("/api/schutz/verschluesselung")
+def api_verschluesselung(request: Request):
+    b = _benutzer(request)
+    try:
+        schutz.verwalter_pruefen(b, _sitzungstoken(request))
+        grund = None
+    except schutz.SperreFehler as e:
+        grund = str(e)
+    v = tresor.einstellungen()
+    return {"aktiv": bool(v), "seit": (v or {}).get("seit"), "mindestlaenge": tresor.mindestlaenge(),
+            "untergrenze": tresor.MINDESTLAENGE_UNTERGRENZE, "stapel": tresor.stapel_anzahl(),
+            "klartext_download": tresor.klartext_download_vorhanden(),
+            "verfuegbar": db_modul.sqlcipher is not None, "verwalten": grund is None, "grund": grund}
+
+
+@app.post("/api/schutz/verschluesselung/vorbereiten")
+def api_verschluesselung_vorbereiten(request: Request, payload: VerschluesselungVorbereitenIn):
+    _verwalter(request)
+    try:
+        v = tresor.einschalten_vorbereiten(payload.passphrase, payload.wiederholung, payload.mindestlaenge)
+    except tresor.TresorFehler as e:
+        raise HTTPException(422, str(e))
+    token, phrase = zuruecksetzen.phrase_ausstellen({"verschluesselung": "ein", "kennung": v["kennung"]})
+    return {**v, "token": token, "phrase": phrase}
+
+
+@app.post("/api/schutz/verschluesselung/einschalten")
+def api_verschluesselung_einschalten(request: Request, payload: EinschaltenIn):
+    _verwalter(request)
+    try:
+        zuruecksetzen.phrase_pruefen(payload.token, payload.phrase, {"verschluesselung": "ein", "kennung": payload.kennung})
+        return {"schritte": tresor.einschalten_ausfuehren(payload.kennung, payload.getippt, _backup_mit_beschreibung)}
+    except (tresor.TresorFehler, zuruecksetzen.ZuruecksetzenFehler) as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/api/schutz/verschluesselung/ausschalten-phrase")
+def api_verschluesselung_ausschalten_phrase(request: Request):
+    _verwalter(request)
+    token, phrase = zuruecksetzen.phrase_ausstellen({"verschluesselung": "aus"})
+    return {"token": token, "phrase": phrase}
+
+
+@app.post("/api/schutz/verschluesselung/ausschalten")
+def api_verschluesselung_ausschalten(request: Request, payload: AusschaltenIn):
+    _verwalter(request)
+    try:
+        zuruecksetzen.phrase_pruefen(payload.token, payload.phrase, {"verschluesselung": "aus"})
+        return {"schritte": tresor.ausschalten(payload.geheimnis, _backup_mit_beschreibung)}
+    except (tresor.TresorFehler, zuruecksetzen.ZuruecksetzenFehler) as e:
+        raise HTTPException(401 if "stimmt nicht" in str(e) and "Phrase" not in str(e) else 422, str(e))
+
+
+@app.post("/api/schutz/verschluesselung/passphrase")
+def api_verschluesselung_passphrase(request: Request, payload: PassphraseAendernIn):
+    _verwalter(request)
+    if not tresor.aktiv():
+        raise HTTPException(409, "Die Verschlüsselung ist nicht eingeschaltet.")
+    try:
+        tresor.passphrase_aendern(payload.geheimnis, payload.neu, payload.wiederholung)
+    except tresor.TresorFehler as e:
+        raise HTTPException(401 if "stimmt nicht" in str(e) and "Eingaben" not in str(e) else 422, str(e))
+    return {"ok": True}
+
+
+@app.put("/api/schutz/verschluesselung/mindestlaenge")
+def api_verschluesselung_mindestlaenge(request: Request, payload: MindestlaengeIn):
+    _verwalter(request)
+    if not tresor.aktiv():
+        raise HTTPException(409, "Die Verschlüsselung ist nicht eingeschaltet.")
+    try:
+        return {"mindestlaenge": tresor.mindestlaenge_setzen(payload.laenge)}
+    except tresor.TresorFehler as e:
+        raise HTTPException(422, str(e))
+
+
+# Klärliste
+
+@app.get("/api/klaerliste")
+def api_klaerliste():
+    conn = verbindung()
+    try:
+        return [{**dict(r), "daten": json.loads(r["daten"])}
+                for r in conn.execute("SELECT * FROM klaerliste ORDER BY erfasst_am, id")]
+    finally:
+        conn.close()
+
+
+@app.post("/api/klaerliste/{eintrag_id}/buchen")
+def api_klaerliste_buchen(eintrag_id: int, payload: BuchungIn):
+    conn = verbindung()
+    try:
+        if not conn.execute("SELECT 1 FROM klaerliste WHERE id = ?", (eintrag_id,)).fetchone():
+            raise HTTPException(404, "Eintrag nicht gefunden.")
+        conn.execute("DELETE FROM klaerliste WHERE id = ?", (eintrag_id,))
+        try:
+            buchung_id = _buchung_pruefen_und_anlegen(conn, payload, mit_regeln=False)["id"]
+        except ValueError as e:
+            conn.rollback()
+            raise HTTPException(400, str(e))
+        except HTTPException:
+            conn.rollback()
+            raise
+        return {"id": buchung_id}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/klaerliste/{eintrag_id}")
+def api_klaerliste_verwerfen(eintrag_id: int):
+    conn = verbindung()
+    try:
+        conn.execute("DELETE FROM klaerliste WHERE id = ?", (eintrag_id,))
+        conn.commit()
+        LOG_SCHUTZ.info("Klärliste: Eintrag %s verworfen", eintrag_id)
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+# Erfassen ohne Code oder bei verschlossener Datenbank (Schnellbuchung)
+
+@app.get("/api/erfassen/stammdaten")
+def api_erfassen_stammdaten():
+    """Konten, Kategorien und Sparziele für die Schnellbuchung. Bei
+    verschlossener Datenbank aus dem Auszug."""
+    if tresor.gesperrt():
+        a = tresor.auszug_lesen()
+        return {"konten": [k for k in a["konten"] if k.get("aktiv", 1)], "kategorien": a["kategorien"],
+                "sparziele": a["sparziele"], "vorgemerkt": True}
+    conn = verbindung()
+    try:
+        return {"konten": [{"id": k["id"], "name": k["name"]} for k in buchungen.konten_liste(conn)],
+                "kategorien": [{k: r[k] for k in ("id", "name", "parent_id", "typ", "system_key", "siri_favorit")}
+                               for r in conn.execute("SELECT * FROM kategorien ORDER BY name")],
+                "sparziele": [dict(r) for r in conn.execute(
+                    "SELECT id, name, konto_id FROM budgets WHERE typ = 'sparziel' ORDER BY name")],
+                "vorgemerkt": False}
+    finally:
+        conn.close()
+
+
+@app.get("/api/erfassen/vorschlag")
+def api_erfassen_vorschlag(beschreibung: str):
+    if tresor.gesperrt():
+        return {"kategorie_id": None}
+    return api_regel_vorschlag(beschreibung)
+
+
+@app.post("/api/erfassen/buchung")
+def api_erfassen_buchung(payload: BuchungIn):
+    """Antwort ohne gespeicherte Daten (keine Doppelbuchungs-Prüfung, keine
+    Liste). Bei verschlossener Datenbank in den Stapel."""
+    if tresor.gesperrt():
+        a = tresor.auszug_lesen()
+        if payload.typ not in ("Ist", "Plan", "Uebertragung"):
+            raise HTTPException(400, f"Unbekannter Buchungstyp: {payload.typ}")
+        if payload.typ != "Uebertragung" and payload.kategorie_id is None:
+            raise HTTPException(400, "Bitte eine Kategorie wählen. Die Datenbank ist verschlüsselt, ohne "
+                                     "Entsperren greifen keine Kategorisierungsregeln.")
+        if payload.typ == "Uebertragung" and payload.zielkonto_id is None:
+            raise HTTPException(400, "Bei Übertragungen ist ein Zielkonto Pflicht.")
+        namen = {k["id"]: k["name"] for k in a["konten"]}
+        kat = {k["id"]: k["name"] for k in a["kategorien"]}
+        tresor.stapel_ablegen({"quelle": "schnellbuchung", **payload.model_dump(),
+                               "konto": namen.get(payload.konto_id), "kategorie": kat.get(payload.kategorie_id)})
+        datum = _parse_datum(payload.datum)
+        hinweis = feiertage_modul.datum_hinweis(datum, a.get("bundesland") or "") if datum else None
+        return {"vorgemerkt": True, "feiertagshinweis": feiertage_modul.hinweis_text(hinweis) if hinweis else None}
+    ergebnis = api_buchung_anlegen(payload)
+    return {"vorgemerkt": False, "auto_kategorie": ergebnis.get("auto_kategorie")}
+
+
 
 _STATIC_VERZEICHNIS = resource_pfad("app/static")
 app.mount("/assets", StaticFiles(directory=str(_STATIC_VERZEICHNIS)), name="assets")

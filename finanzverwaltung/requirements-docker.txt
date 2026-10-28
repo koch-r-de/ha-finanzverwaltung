@@ -7,3 +7,7 @@ tzdata==2025.3
 markdown-it-py==4.2.0
 reportlab==5.0.1
 pillow==12.3.0
+sqlcipher3-wheels==0.5.7
+cryptography==50.0.2
+argon2-cffi==25.1.0
+msoffcrypto-tool==6.0.0

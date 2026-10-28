@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Schnellbuchung</title>
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/style.css?v=18">
 <style>
   body { display: block; background: var(--papier); }
   .sb-huelle { max-width: 560px; margin: 0 auto; padding: 16px 14px 40px; }
@@ -49,6 +49,7 @@
     <span class="stempel" id="sb-datum">–</span>
   </div>
 
+  <p class="hinweis" id="sb-modus" hidden></p>
   <div class="sb-meldung" id="sb-meldung" role="status" aria-live="polite"></div>
 
   <form id="sb-form">
@@ -106,21 +107,29 @@
     </div>
   </form>
 
-  <div class="sb-letzte">
+  <div class="sb-letzte" id="sb-letzte">
     <strong>Zuletzt gebucht</strong>
     <table><tbody id="sb-letzte-tabelle"></tbody></table>
   </div>
 
 </div>
 
+<script src="assets/schutz.js?v=1"></script>
 <script>
 const API = "api";
 let KONTEN = [], KATEGORIEN = [];
+// Seit 3.0: true, solange nur erfasst wird (Sperre „ohne Code nur erfassen“
+// ohne Anmeldung, oder Datenbank verschlüsselt und zu). Dann eigene
+// Endpunkte unter /erfassen, keine letzten Buchungen.
+let SB_ERFASSEN = false;
 
-async function api(pfad, optionen = {}) {
+async function api(pfad, optionen = {}, nochmal = true) {
   const antwort = await fetch(API + pfad, {
-    headers: { "Content-Type": "application/json" }, ...optionen });
-  if (!antwort.ok) throw new Error(`API-Fehler ${antwort.status}: ${await antwort.text()}`);
+    ...optionen, headers: { "Content-Type": "application/json", ...schutzKopf() } });
+  if (!antwort.ok) {
+    if (nochmal && await schutzBehandeln(antwort)) return api(pfad, optionen, false);
+    throw new Error(`API-Fehler ${antwort.status}: ${await antwort.text()}`);
+  }
   const typ = antwort.headers.get("content-type") || "";
   return typ.includes("application/json") ? antwort.json() : null;
 }
@@ -168,7 +177,20 @@ function kategorieOptionen(parentId, praefix) {
 }
 
 async function laden() {
-  [KONTEN, KATEGORIEN] = await Promise.all([api("/konten"), api("/kategorien")]);
+  const st = await schutzSicherstellen({ erfassen: true });
+  SB_ERFASSEN = st.verschluesselung.gesperrt || (st.sperre.aktiv && !SCHUTZ.sitzung);
+  const modus = document.getElementById("sb-modus");
+  modus.hidden = !SB_ERFASSEN;
+  modus.textContent = st.verschluesselung.gesperrt
+    ? "Die Datenbank ist verschlüsselt und noch nicht entsperrt. Buchungen werden vorgemerkt und beim Entsperren gebucht."
+    : "Ohne Code: Buchungen werden nur erfasst.";
+  document.getElementById("sb-letzte").hidden = SB_ERFASSEN;
+  if (SB_ERFASSEN) {
+    const d = await api("/erfassen/stammdaten");
+    [KONTEN, KATEGORIEN, SB_SPARZIELE] = [d.konten, d.kategorien, d.sparziele];
+  } else {
+    [KONTEN, KATEGORIEN] = await Promise.all([api("/konten"), api("/kategorien")]);
+  }
   const kontoHtml = KONTEN.map((k) => `<option value="${k.id}">${k.name}</option>`).join("");
   document.getElementById("sb-konto").innerHTML = kontoHtml;
   document.getElementById("sb-zielkonto").innerHTML = kontoHtml;
@@ -182,7 +204,7 @@ async function laden() {
     `<optgroup label="Alle Kategorien">${kategorieOptionen(null, "")}</optgroup>`;
 
   try {
-    SB_SPARZIELE = await api("/sparziele");
+    if (!SB_ERFASSEN) SB_SPARZIELE = await api("/sparziele");
     sbSparzieleFiltern();
   } catch {}
 
@@ -199,7 +221,7 @@ async function laden() {
   if (ktx.konto_id && KONTEN.some((k) => k.id == ktx.konto_id))
     document.getElementById("sb-konto").value = ktx.konto_id;
 
-  await letzteLaden();
+  if (!SB_ERFASSEN) await letzteLaden();
 }
 
 async function letzteLaden() {
@@ -282,7 +304,7 @@ async function sbVorschlagHolen() {
   if (SB_KATEGORIE_SELBST) return;
   let id = null;
   if (text) {
-    try { id = (await api(`/regeln/vorschlag?beschreibung=${encodeURIComponent(text)}`)).kategorie_id; }
+    try { id = (await api(`/${SB_ERFASSEN ? "erfassen" : "regeln"}/vorschlag?beschreibung=${encodeURIComponent(text)}`)).kategorie_id; }
     catch { return; }
   }
   if (nr !== SB_VORSCHLAG_NR || SB_KATEGORIE_SELBST) return;   // inzwischen weiter getippt oder selbst gewählt
@@ -347,10 +369,11 @@ async function speichern(weiter) {
   };
 
   try {
-    const antwort = await api("/buchungen", { method: "POST", body: JSON.stringify(koerper) });
+    const antwort = await api(SB_ERFASSEN ? "/erfassen/buchung" : "/buchungen",
+                              { method: "POST", body: JSON.stringify(koerper) });
     kontextSchreiben({ konto_id: kontoId });
 
-    let text = `Gebucht: ${euro(betrag)}`;
+    let text = antwort.vorgemerkt ? `Vorgemerkt: ${euro(betrag)} · wird beim Entsperren gebucht` : `Gebucht: ${euro(betrag)}`;
     if (antwort.auto_kategorie) {
       const k = KATEGORIEN.find((x) => x.id === antwort.auto_kategorie);
       text += ` · Kategorie automatisch erkannt: ${k ? k.name : "–"}`;
@@ -367,7 +390,7 @@ async function speichern(weiter) {
     document.getElementById("sb-rechnung").textContent = "";
     SB_KATEGORIE_SELBST = false;
     sbKategorieSetzen(null, false);
-    await letzteLaden();
+    if (!SB_ERFASSEN) await letzteLaden();
 
     if (weiter) {
       document.getElementById("sb-betrag").focus();

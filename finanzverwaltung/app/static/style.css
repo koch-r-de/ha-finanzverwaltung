@@ -585,3 +585,39 @@ button.hilfe-icon { border: none; padding: 0; cursor: pointer; }
 .mehrfach-chip.neutral, .mehrfach-chip.leer { flex: none; max-width: none; }
 .diagramm-kopf { flex-wrap: wrap; }
 .diagramm-kopf .segment { flex: none; }
+
+/* ─── Sperre und Verschlüsselung (seit 3.0) ─────────────────────── */
+
+.schutz-schirm {
+  position: fixed; inset: 0; z-index: 1000; display: flex; align-items: flex-start; justify-content: center;
+  overflow-y: auto; padding: 8vh 16px 24px; background: var(--papier);
+}
+.schutz-schirm[hidden] { display: none; }
+html.schutz-zu .seitenleiste, html.schutz-zu .hauptbereich, html.schutz-zu .sb-huelle { visibility: hidden; }
+.schutz-karte {
+  width: min(420px, 100%); background: var(--papier-karte); border: 1px solid var(--linie);
+  border-radius: var(--radius-karte); box-shadow: var(--schatten); padding: 22px 22px 18px;
+}
+.schutz-karte h2 { font-family: var(--schrift-anzeige); font-weight: 400; font-size: 22px; margin: 0 0 8px; }
+.schutz-karte form { display: grid; gap: 8px; margin-top: 10px; }
+.schutz-karte form[hidden] { display: none; }
+.schutz-karte label { font-size: 12px; color: var(--tinte-70); }
+.schutz-karte input, .schutz-karte select { width: 100%; padding: 10px; font-size: 16px; border: 1px solid var(--linie-stark); border-radius: var(--radius); background: #fff; }
+.schutz-karte .reihen-werkzeuge { margin-top: 4px; }
+.schutz-vergessen { display: grid; gap: 8px; }
+.schutz-vergessen[hidden] { display: none; }
+
+.muster { display: grid; gap: 6px; justify-items: center; }
+.muster-svg { width: min(240px, 70vw); height: auto; touch-action: none; user-select: none; background: #fff;
+  border: 1px solid var(--linie-stark); border-radius: var(--radius-karte); }
+.muster-punkt { fill: var(--papier); stroke: var(--linie-stark); stroke-width: 3; cursor: pointer; }
+.muster-punkt.aktiv { fill: var(--grundton); stroke: var(--grundton-dunkel); }
+.muster-linie { fill: none; stroke: var(--grundton); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; pointer-events: none; }
+.muster-leiste { display: flex; gap: 8px; align-items: center; }
+
+.schluessel-anzeige { font-family: ui-monospace, Consolas, monospace; font-size: 19px; letter-spacing: 0.06em;
+  text-align: center; padding: 12px; margin: 8px 0 12px; border: 1px dashed var(--grundton); background: #0064000d; user-select: all; word-break: break-word; }
+.schutz-status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; border: 1px solid var(--linie-stark); }
+.schutz-status.an { color: var(--gruen); border-color: #2f7d4f66; background: #2f7d4f12; }
+.schutz-formular { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; align-items: end; }
+.schutz-formular .breit { grid-column: 1 / -1; }

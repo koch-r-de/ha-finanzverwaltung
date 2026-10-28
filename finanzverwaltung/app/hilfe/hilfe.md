@@ -1,5 +1,5 @@
 # Hilfe zur Finanzverwaltung
-Programmversion: 2.7
+Programmversion: 3.0
 
 ## Erste Schritte
 <!-- kapitel: erste-schritte -->
@@ -1073,6 +1073,7 @@ Unterwegs buchst du am schnellsten mit der Schnellbuchung oder per Sprachbefehl.
 - Die Meldung „Gebucht“ steht oben und bleibt, bis du den nächsten Betrag eingibst.
 - Die Seite merkt sich das zuletzt genutzte Konto.
 - Deine Siri-Favoriten stehen in der Kategorie-Auswahl ganz oben.
+- Bei eingeschalteter Sperre fragt die Seite je nach Einstellung den Code ab oder erfasst nur. Ist die Datenbank verschlüsselt und noch nicht entsperrt, werden Buchungen vorgemerkt. Siehe [Klärliste](#sicherheit.klaerliste).
 - Gibt es am selben Tag schon den gleichen Betrag auf dem Konto, erscheint ein Hinweis auf eine mögliche Doppelbuchung.
 - Ist das gewählte Datum ein Feiertag, steht ein Hinweis unter dem Feld „Datum“.
 
@@ -1370,6 +1371,7 @@ Kategorien stehen als Pfad in der Datei, zum Beispiel Ausgaben > Wohnen > Strom.
 - „Leere Vorlage (xlsx)“ liefert eine Datei nur mit Überschriften.
 - Für eine CSV-Datei wählst du vorher den „Bereich (nur für CSV nötig)“.
 - Eine Vorschau bleibt zehn Minuten gültig.
+- Bei eingeschalteter Verschlüsselung fragt der Export nach einem Excel-Kennwort. Eine geschützte Datei importierst du mit dem Kennwort im Feld „Excel-Kennwort (nur bei geschützter Datei)“.
 
 ![Die Vorschau vor dem Import](bilder/admin.export-import.png)
 
@@ -1563,8 +1565,9 @@ Lege Reihenfolge und Trennlinien der Menüpunkte fest. „Start“ steht immer o
 - Vor jedem Import, vor jedem Zurücksetzen und vor jedem Wiederherstellen legt das Programm ebenfalls ein Backup an. Die Spalte „Beschreibung“ nennt den Anlass.
 - Mit „Wiederherstellen“ in einer Zeile spielst du dieses Backup zurück.
 - Lade die Datenbank immer herunter, bevor du das Add-on deinstallierst. Eine Deinstallation löscht alle Daten.
+- Ist die Verschlüsselung eingeschaltet, sind Backups und die heruntergeladene Datenbank verschlüsselt.
 
-**Siehe auch:** [Datenbank wiederherstellen](#admin.wiederherstellen), [Export und Import](#admin.export-import)
+**Siehe auch:** [Datenbank wiederherstellen](#admin.wiederherstellen), [Export und Import](#admin.export-import), [Herunterladen und Exportieren](#sicherheit.download)
 
 ### Datenbank wiederherstellen
 <!-- kapitel: admin.wiederherstellen -->
@@ -1595,6 +1598,7 @@ Alle jetzigen Daten werden ersetzt. Der jetzige Stand bleibt als Backup „vor W
 - Stammt die Datei aus einer älteren Programmversion, passt das Programm sie wie bei einem Update an. Was es geändert hat, steht danach im Fenster.
 - Die Backup-Liste bleibt die dieses Programms. Sicherungen aus der eingespielten Datei tauchen darin nicht auf.
 - Die Phrase gilt zehn Minuten und nur einmal.
+- Eine verschlüsselte Datei (.fvdb) öffnest du mit der Passphrase vom Zeitpunkt des Downloads oder dem Wiederherstellungsschlüssel. Trag sie vor „Prüfen“ in das Feld daneben ein.
 
 ![Das Fenster vor dem Wiederherstellen](bilder/admin.wiederherstellen.png)
 
@@ -1619,6 +1623,231 @@ Alle jetzigen Daten werden ersetzt. Der jetzige Stand bleibt als Backup „vor W
 <!-- /hinweis -->
 
 **Siehe auch:** [Konto anlegen oder ändern](#konten.anlegen)
+
+## Sicherheit
+<!-- kapitel: sicherheit -->
+
+Zwei Schutzfunktionen kannst du unabhängig voneinander einschalten. Die Sperre verlangt beim Öffnen einen Code. Die Verschlüsselung macht die Datenbank ohne Passphrase unlesbar. Beides ist ausgeschaltet, bis du es einschaltest.
+
+### Sperre einschalten
+<!-- kapitel: sicherheit.sperre -->
+<!-- stichworte: Sperre, Code, PIN, Passwort, Muster, Zugriffsschutz, Freigabeliste -->
+
+**Wofür?** Niemand sieht deine Finanzen, nur weil er an deinem Handy oder Rechner in Home Assistant angemeldet ist. Die Finanzverwaltung fragt beim Öffnen nach einem Code.
+
+**So geht's**
+
+1. Stelle in Home Assistant unter „Einstellungen“, „Add-ons“, „Private Finanzverwaltung“, „Konfiguration“ die Option „herkunft_pruefen“ auf „sperren“ und starte das Add-on neu. Prüfe vorher im Protokoll des Add-ons, dass Seitenleiste und Siri mit „erlaubt“ erscheinen.
+2. Öffne „Administration“, Reiter „Sicherheit“, Block „Sperre“.
+3. Wähle bei „Code“, ob jeder Benutzer einen eigenen Code hat oder alle einen gemeinsamen.
+4. Wähle die Art des Codes: PIN, Passwort oder Muster. Gib den Code zweimal ein. Beim Muster tippst du die Punkte nacheinander an oder ziehst den Finger darüber.
+5. Stelle ein, nach wie vielen Fehlversuchen gesperrt wird, nach wie vielen Minuten ohne Tätigkeit die Seite sich sperrt und wie sich die Schnellbuchung verhält.
+6. Klicke auf „Sperre einschalten …“. Das Fenster zeigt den Wiederherstellungsschlüssel der Sperre. Drucke ihn aus oder schreib ihn ab, tippe ihn zur Bestätigung ab und klicke auf „Einschalten“.
+
+**Gut zu wissen**
+
+<!-- hinweis: sicherheit.sperre -->
+Die Finanzverwaltung fragt beim Öffnen nach einem Code. Ändern dürfen das nur freigegebene Administratoren von Home Assistant. Du bist nach dem Einschalten automatisch freigegeben.
+<!-- /hinweis -->
+
+<!-- hinweis: sicherheit.herkunft -->
+Die Add-on-Option „herkunft_pruefen“ steht nicht auf „sperren“. Dann können andere Add-ons im Netz von Home Assistant die Finanzverwaltung ohne Code aufrufen. Die Sperre lässt sich erst einschalten, wenn die Option auf „sperren“ steht.
+<!-- /hinweis -->
+
+- Die Sperre wirkt im Programm selbst, nicht nur auf der Seite. Auch direkte Aufrufe der Schnittstelle brauchen den Code.
+- Mindestlängen: PIN 6 Ziffern, Passwort 8 Zeichen, Muster 5 Punkte. Du kannst sie unter „Einstellungen“ erhöhen, nie senken.
+- Ab dem fünften Fehlversuch wartest du eine Minute, danach jeweils doppelt so lange, höchstens eine Stunde. Nach der eingestellten Zahl von Fehlversuchen ist der Benutzer gesperrt, bis ihn jemand freigibt.
+- Die automatische Sperre greift nach der eingestellten Zeit ohne Tippen oder Klicken, vorgegeben sind 5 Minuten. Auf Wunsch sperrt die Seite auch, sobald du die App in den Hintergrund schickst oder den Tab wechselst.
+- Schnellbuchung „ohne Code nur erfassen“: Freigegebene Benutzer buchen ohne Code, sehen aber keine letzten Buchungen. „immer mit Code“: Auch die Schnellbuchung fragt den Code ab.
+- Siri bucht weiter, solange der Kurzbefehl über Home Assistant läuft. Die Antwort nennt dann nur den Betrag.
+- Ausschalten kannst du die Sperre im selben Block mit deinem Code.
+
+**Siehe auch:** [Code eingeben und freigeben](#sicherheit.entsperren), [Benutzer freigeben](#sicherheit.benutzer), [Verschlüsselung einschalten](#sicherheit.verschluesselung)
+
+### Code eingeben und freigeben
+<!-- kapitel: sicherheit.entsperren -->
+<!-- stichworte: Sperrbildschirm, Code vergessen, Fehlversuche, Wiederherstellungsschlüssel, Freigeben -->
+
+**Wofür?** Du öffnest die gesperrte Finanzverwaltung und weißt, was zu tun ist, wenn der Code nicht mehr passt.
+
+**So geht's**
+
+1. Öffne die Finanzverwaltung. Statt der Übersicht erscheint „Gesperrt“.
+2. Gib deine PIN oder dein Passwort ein oder zeichne dein Muster und klicke auf „Entsperren“.
+3. Hast du den Code vergessen, klicke auf „Code vergessen?“ und gib den Wiederherstellungsschlüssel der Sperre ein.
+4. Ist die Verschlüsselung eingeschaltet, kannst du dich auch mit „Mit der Passphrase“ freigeben.
+5. Ein anderer freigegebener Benutzer kann dich unter „Administration“, Reiter „Sicherheit“, Block „Sperre“ mit „Freigeben“ entsperren.
+
+**Gut zu wissen**
+
+- Während der Wartezeit zählt die Seite herunter. Versuche in dieser Zeit zählen nicht.
+- Die Wartezeit und die Zahl der Fehlversuche bleiben auch nach einem Neustart des Add-ons bestehen.
+- Der Wiederherstellungsschlüssel der Sperre steht nur auf deinem Ausdruck. Das Programm speichert nur eine Prüfsumme.
+
+**Siehe auch:** [Sperre einschalten](#sicherheit.sperre)
+
+### Benutzer freigeben
+<!-- kapitel: sicherheit.benutzer -->
+<!-- stichworte: Freigabeliste, weiterer Benutzer, eigener Code, Code ändern -->
+
+**Wofür?** Weitere Personen in deinem Home Assistant dürfen die Finanzverwaltung nutzen.
+
+**So geht's**
+
+1. Die Person öffnet die Finanzverwaltung einmal mit ihrem eigenen Home-Assistant-Benutzer. Sie sieht „Kein Zugang“.
+2. Öffne „Administration“, Reiter „Sicherheit“, Block „Sperre“. Wähle die Person unter „Freigegebene Benutzer“ aus und klicke auf „Freigeben“.
+3. Beim nächsten Öffnen legt die Person ihren eigenen Code fest. Beim gemeinsamen Code nutzt sie den gemeinsamen.
+4. Deinen eigenen Code änderst du unter „Eigenen Code ändern“ mit dem bisherigen Code.
+
+**Gut zu wissen**
+
+- Wer nicht in der Liste steht, kommt nicht hinein, auch nicht in die Schnellbuchung.
+- Mit „Entfernen“ nimmst du jemanden aus der Liste. Den eigenen Eintrag kannst du nicht entfernen.
+- Den gemeinsamen Code ändern nur Administratoren.
+
+**Siehe auch:** [Sperre einschalten](#sicherheit.sperre)
+
+### Verschlüsselung einschalten
+<!-- kapitel: sicherheit.verschluesselung -->
+<!-- stichworte: Verschlüsselung, Passphrase, SQLCipher, Diebstahl, Wiederherstellungsschlüssel -->
+
+**Wofür?** Gerät der Raspberry Pi oder eine Speicherkarte in fremde Hände, sind deine Finanzdaten ohne Passphrase nicht lesbar.
+
+**So geht's**
+
+1. Öffne „Administration“, Reiter „Sicherheit“, Block „Verschlüsselung“.
+2. Klicke auf „Datenbank herunterladen“ und bewahre die Datei sicher auf. Ohne diesen Schritt lässt sich die Verschlüsselung nicht einschalten.
+3. Gib zweimal eine Passphrase ein. Sie muss mindestens so lang sein wie die eingestellte Mindestlänge, wenigstens 16 Zeichen. Ein kurzer Satz lässt sich gut merken.
+4. Klicke auf „Weiter …“. Das Fenster zeigt den Wiederherstellungsschlüssel. Drucke ihn aus oder schreib ihn ab.
+5. Tippe den Schlüssel ab, tippe die angezeigte Phrase ab und klicke auf „Verschlüsseln“.
+6. Das Fenster listet alle Schritte. Lösche danach die heruntergeladene unverschlüsselte Datei, wenn du sie nicht mehr brauchst.
+
+**Gut zu wissen**
+
+<!-- hinweis: sicherheit.verschluesselung -->
+Verschlüsselt die Datenbank und alle Backups. Nach jedem Neustart des Add-ons gibst du die Passphrase einmal ein. Ohne Passphrase und ohne Wiederherstellungsschlüssel sind die Daten verloren.
+<!-- /hinweis -->
+
+<!-- hinweis: sicherheit.wiederherstellungsschluessel -->
+Diesen Schlüssel zeigt das Programm nur jetzt. Bewahre ihn getrennt vom Gerät auf. Er ersetzt die Passphrase, falls du sie vergisst.
+<!-- /hinweis -->
+
+<!-- hinweis: sicherheit.einschalten -->
+Vorher legt das Programm ein Backup an. Es verschlüsselt Datenbank und Backups zuerst in Kopien und prüft jede Kopie mit Passphrase und Wiederherstellungsschlüssel. Erst dann ersetzt es die unverschlüsselten Dateien.
+<!-- /hinweis -->
+
+<!-- hinweis: sicherheit.nach-einschalten -->
+Nach dem nächsten Neustart des Add-ons fragt die Finanzverwaltung nach der Passphrase. Bis dahin merkt sie Siri- und Schnellbuchungen nur vor.
+<!-- /hinweis -->
+
+- Das Programm entfernt die unverschlüsselten Dateien. Auf Speicherkarten können trotzdem Reste der alten Daten bleiben, bis der Speicher neu beschrieben wird.
+- Backups, die nach dem Einschalten entstehen, sind ebenfalls verschlüsselt.
+- Wer Zugang zum Terminal des Raspberry Pi hat, während die Datenbank entsperrt ist, kann sie lesen. Davor schützt die Verschlüsselung nicht.
+
+**Siehe auch:** [Nach dem Neustart entsperren](#sicherheit.passphrase), [Herunterladen und Exportieren](#sicherheit.download), [Verschlüsselung ausschalten](#sicherheit.ausschalten)
+
+### Nach dem Neustart entsperren
+<!-- kapitel: sicherheit.passphrase -->
+<!-- stichworte: Passphrase eingeben, Passphrase vergessen, Passphrase ändern, Neustart -->
+
+**Wofür?** Nach einem Neustart des Add-ons oder des Raspberry Pi öffnest du die Datenbank wieder.
+
+**So geht's**
+
+1. Öffne die Finanzverwaltung. Es erscheint „Datenbank entsperren“.
+2. Gib die Passphrase ein und klicke auf „Entsperren“.
+3. Das Programm holt jetzt nach, was sonst beim Start passiert: fällige Buchungen aus Vorlagen, Darlehen und Altersvorsorge, Plan-Buchungen, Backups. Danach bucht es die vorgemerkten Buchungen.
+4. Passphrase vergessen? Klicke auf „Passphrase vergessen?“, gib den Wiederherstellungsschlüssel ein und lege eine neue Passphrase fest.
+5. Ändern kannst du die Passphrase unter „Administration“, Reiter „Sicherheit“, Block „Verschlüsselung“ mit „Passphrase ändern“.
+
+**Gut zu wissen**
+
+- Nach falschen Eingaben wartest du ab dem fünften Fehlversuch, wie bei der Sperre. Eine dauerhafte Sperre gibt es hier nicht.
+- Eine neue Passphrase verschlüsselt die Datenbank nicht neu. Der Wiederherstellungsschlüssel bleibt gültig.
+- Die eingestellte Mindestlänge gilt für neue Passphrasen und für Excel-Kennwörter.
+
+**Siehe auch:** [Verschlüsselung einschalten](#sicherheit.verschluesselung), [Klärliste](#sicherheit.klaerliste)
+
+### Herunterladen und Exportieren
+<!-- kapitel: sicherheit.download -->
+<!-- stichworte: Datenbank herunterladen verschlüsselt, fvdb, Excel-Kennwort, Export mit Kennwort -->
+
+**Wofür?** Auch Kopien deiner Daten bleiben bei eingeschalteter Verschlüsselung geschützt.
+
+**So geht's**
+
+1. „Datenbank herunterladen“ unter „Administration“, Reiter „System“, Block „Backups“ liefert eine verschlüsselte Datei mit der Endung .fvdb.
+2. „Export herunterladen (xlsx)“ fragt nach einem Excel-Kennwort. Excel und LibreOffice öffnen die Datei mit diesem Kennwort.
+3. Unverschlüsselt geht beides nur über „Unverschlüsselt herunterladen …“ mit einer Bestätigungsphrase.
+4. Beim „Datenbank wiederherstellen“ gibst du für eine .fvdb-Datei die Passphrase vom Zeitpunkt des Downloads oder den Wiederherstellungsschlüssel ein.
+5. Beim Import einer geschützten Excel-Datei trägst du das Kennwort bei „Excel-Kennwort (nur bei geschützter Datei)“ ein.
+
+**Gut zu wissen**
+
+<!-- hinweis: sicherheit.download -->
+Die Datei ist mit dem Schlüssel dieser Datenbank verschlüsselt. Öffnen lässt sie sich mit der Passphrase vom Zeitpunkt des Downloads oder mit dem Wiederherstellungsschlüssel.
+<!-- /hinweis -->
+
+<!-- hinweis: sicherheit.export -->
+Das Kennwort gilt nur für diese Datei. Notiere es dir, das Programm speichert es nicht.
+<!-- /hinweis -->
+
+<!-- hinweis: sicherheit.unverschluesselt -->
+Eine unverschlüsselte Kopie kann jeder lesen, der die Datei bekommt. Lade sie nur herunter, wenn du sie sicher aufbewahrst.
+<!-- /hinweis -->
+
+- Eine eingespielte Datei übernimmt den Schutz dieser Installation. Bei eingeschalteter Verschlüsselung wird sie verschlüsselt, sonst entschlüsselt.
+- Ist die Verschlüsselung aus, laden Datenbank und Export wie gewohnt ohne Schutz.
+
+**Siehe auch:** [Datenbank wiederherstellen](#admin.wiederherstellen), [Export und Import](#admin.export-import)
+
+### Verschlüsselung ausschalten
+<!-- kapitel: sicherheit.ausschalten -->
+<!-- stichworte: Entschlüsseln, Verschlüsselung aus -->
+
+**Wofür?** Du brauchst die Verschlüsselung nicht mehr.
+
+**So geht's**
+
+1. Öffne „Administration“, Reiter „Sicherheit“, Block „Verschlüsselung“.
+2. Klicke auf „Verschlüsselung ausschalten …“.
+3. Gib die Passphrase oder den Wiederherstellungsschlüssel ein, tippe die Phrase ab und klicke auf „Entschlüsseln“.
+
+**Gut zu wissen**
+
+<!-- hinweis: sicherheit.ausschalten -->
+Entschlüsselt die Datenbank und alle Backups. Vorher legt das Programm ein Backup an. Danach braucht es keine Passphrase mehr, und jeder mit Zugriff auf die Dateien kann sie lesen.
+<!-- /hinweis -->
+
+- Der Wiederherstellungsschlüssel gilt danach nicht mehr. Schaltest du die Verschlüsselung wieder ein, bekommst du einen neuen.
+
+**Siehe auch:** [Verschlüsselung einschalten](#sicherheit.verschluesselung)
+
+### Klärliste
+<!-- kapitel: sicherheit.klaerliste -->
+<!-- stichworte: Klärliste, vorgemerkt, Stapel, Siri gesperrt -->
+
+**Wofür?** Solange die Datenbank verschlüsselt und noch nicht entsperrt ist, merkt das Programm Siri- und Schnellbuchungen nur vor. Was sich danach nicht buchen lässt, landet in der Klärliste.
+
+**So geht's**
+
+1. Öffne „Administration“, Reiter „Sicherheit“, Block „Klärliste“.
+2. Jede Zeile nennt die Angaben und den Grund, zum Beispiel ein Konto, das es nicht eindeutig gibt.
+3. Klicke auf „Buchen …“, korrigiere Konto, Kategorie, Betrag oder Datum und klicke auf „Buchen“.
+4. Oder klicke auf „Verwerfen“, wenn der Eintrag nicht gebraucht wird.
+
+**Gut zu wissen**
+
+<!-- hinweis: sicherheit.klaerliste -->
+Vorgemerkte Buchungen, die sich beim Entsperren nicht buchen ließen. Korrigiere sie und buche sie, oder verwirf sie.
+<!-- /hinweis -->
+
+- Vorgemerkt wird sofort verschlüsselt. Lesen kann die Einträge erst das entsperrte Programm.
+- Ohne Entsperren gibt es keine Kategorisierungsregeln. Siri und die Schnellbuchung brauchen dann immer eine Kategorie.
+- Zum Zuordnen liegen Konten, Kategorien und Sparziele mit ihren Namen unverschlüsselt neben der Datenbank. Beträge und Buchungen gehören nicht dazu.
+- Die Schnellbuchung zeigt in dieser Zeit keine letzten Buchungen und warnt nicht vor doppelten Buchungen.
+
+**Siehe auch:** [Nach dem Neustart entsperren](#sicherheit.passphrase), [Schnellbuchung nutzen](#schnellbuchung.nutzen)
 
 ## Daten zurücksetzen
 <!-- kapitel: zuruecksetzen -->
@@ -1789,6 +2018,11 @@ Kurze Anleitungen für häufige Aufgaben. Der Verweis am Ende führt zum ausfüh
 
 Öffne „Wiederkehrend“, wähle bei „Art“ „Umbuchung“, wähle Girokonto und Zielkonto, Betrag und Tag und klicke auf „Anlegen“. Ausführlich: [Umbuchung als Vorlage](#wiederkehrend.umbuchung)
 
+### … die Finanzverwaltung mit einem Code schützen?
+<!-- kapitel: rezepte.sperre -->
+
+Stelle die Add-on-Option „herkunft_pruefen“ auf „sperren“. Öffne dann „Administration“, Reiter „Sicherheit“, Block „Sperre“, wähle PIN, Passwort oder Muster und klicke auf „Sperre einschalten …“. Ausführlich: [Sperre einschalten](#sicherheit.sperre)
+
 ### … auf einen Urlaub sparen?
 <!-- kapitel: rezepte.urlaub -->
 
@@ -1858,15 +2092,20 @@ Lösche das Konto unter Administration bei „Daten zurücksetzen“ mit „Kont
 
 **Gesamtsaldo:** Die Summe aller Konten, bei denen „Im Gesamtsaldo“ angehakt ist.
 
+
 **Inflationsfaktor:** Die angenommene jährliche Teuerung in Prozent.
 
 **Ist-Buchung:** Eine Zahlung, die schon passiert ist.
 
 **Kategorie:** Die Einordnung einer Buchung, zum Beispiel „Lebensmittel/Verpflegung“. Sie bestimmt, ob ein Betrag Einnahme oder Ausgabe ist.
 
+**Klärliste:** Vorgemerkte Siri- oder Schnellbuchungen, die sich beim Entsperren nicht buchen ließen.
+
 **Korridor:** Die Spanne zwischen garantierten und voraussichtlichen Renten in den Auswertungen.
 
 **Nettovermögen:** Die Summe deiner Konten minus der Restschuld deiner Darlehen.
+
+**Passphrase:** Ein langes Kennwort, mit dem du die verschlüsselte Datenbank nach jedem Neustart entsperrst.
 
 **Periode:** Der Zeitraum eines Budgets, zum Beispiel ein Monat.
 
@@ -1886,6 +2125,8 @@ Lösche das Konto unter Administration bei „Daten zurücksetzen“ mit „Kont
 
 **Sparziel:** Ein Budget, auf das du hinsparst. Es liegt auf einem Trägerkonto.
 
+**Sperre:** Schutz durch einen Code, den die Finanzverwaltung beim Öffnen abfragt.
+
 **Trägerkonto:** Das Konto, auf dem das Geld eines Sparziels liegt.
 
 **Übertragung:** Geld, das von einem deiner Konten auf ein anderes geht.
@@ -1895,6 +2136,8 @@ Lösche das Konto unter Administration bei „Daten zurücksetzen“ mit „Kont
 **Vorlage:** Eine Zahlung, die regelmäßig wiederkommt und automatisch gebucht wird.
 
 **Werktag:** Ein Tag, der kein Samstag, Sonntag oder Bankfeiertag ist.
+
+**Wiederherstellungsschlüssel:** Ein Schlüssel zum Ausdrucken. Er ersetzt die Passphrase oder den Code, wenn du sie vergessen hast.
 
 **Zinsbindung:** Der Zeitraum, für den der Zinssatz eines Darlehens fest vereinbart ist.
 

@@ -18,6 +18,7 @@ import sqlite3
 from datetime import date
 from typing import Optional
 from . import zeit
+from .db import INTEGRITAETSFEHLER
 
 
 def _iso(d) -> str:
@@ -144,7 +145,7 @@ def kategorie_loeschen(conn, kategorie_id: int) -> None:
     try:
         conn.execute("DELETE FROM kategorien WHERE id = ?", (kategorie_id,))
         conn.commit()
-    except sqlite3.IntegrityError:
+    except INTEGRITAETSFEHLER:
         conn.rollback()
         raise ValueError("Diese Kategorie wird noch verwendet (z. B. von Buchungen, wiederkehrenden "
                           "Vorlagen oder Altersvorsorge-Verträgen) und kann nicht gelöscht werden.")

@@ -289,3 +289,22 @@ INSERT OR IGNORE INTO einstellungen (key, value) VALUES ('farbe_papier', '');
 -- Format: Liste von {"ziel": <nav-ziel>, "trenner_davor": bool}.
 INSERT OR IGNORE INTO einstellungen (key, value) VALUES ('nav_reihenfolge',
     '[{"ziel":"konten","trenner_davor":false},{"ziel":"buchungen","trenner_davor":true},{"ziel":"wiederkehrend","trenner_davor":false},{"ziel":"plan","trenner_davor":false},{"ziel":"budgets","trenner_davor":false},{"ziel":"altersvorsorge","trenner_davor":false},{"ziel":"darlehen","trenner_davor":false},{"ziel":"auswertungen","trenner_davor":true},{"ziel":"jahr","trenner_davor":false}]');
+
+-- v3.0: Klärliste. Buchungen aus dem Stapel (Siri oder Schnellbuchung bei
+-- verschlossener Datenbank), die sich beim Entsperren nicht buchen ließen.
+-- daten = ursprüngliche Angaben als JSON, grund = Fehlermeldung.
+CREATE TABLE IF NOT EXISTS klaerliste (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    quelle      TEXT NOT NULL,
+    erfasst_am  TEXT NOT NULL,
+    daten       TEXT NOT NULL,
+    grund       TEXT NOT NULL,
+    angelegt_am TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- v3.0: Kennungen bereits verarbeiteter Stapel-Einträge. Schützt vor
+-- doppeltem Buchen, falls das Programm zwischen Buchen und Löschen der
+-- Stapel-Datei endet.
+CREATE TABLE IF NOT EXISTS stapel_erledigt (
+    kennung     TEXT PRIMARY KEY,
+    erledigt_am TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

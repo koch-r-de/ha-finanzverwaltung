@@ -32,6 +32,7 @@ eine Hülle (_OhneCommit) wirkungslos.
 import csv
 import hashlib
 import sqlite3
+from .core.db import FEHLER as DB_FEHLER
 import io
 import json
 import secrets
@@ -1027,7 +1028,7 @@ def _verarbeiten(conn_echt, daten: dict) -> dict:
                         "felder": [f"{k}: {_text(ctx, felder[k], a)} → {_text(ctx, felder[k], n)}"
                                    for k, (a, n) in geaendert.items()]})
                 conn_echt.execute("RELEASE zeile")
-            except (ZeilenFehler, HTTPException, ValueError, KeyError, TypeError, sqlite3.Error) as e:
+            except (ZeilenFehler, HTTPException, ValueError, KeyError, TypeError, *DB_FEHLER) as e:
                 conn_echt.execute("ROLLBACK TO zeile")
                 conn_echt.execute("RELEASE zeile")
                 text = e.detail if isinstance(e, HTTPException) else str(e)
@@ -1043,7 +1044,7 @@ def _verarbeiten(conn_echt, daten: dict) -> dict:
             info["geloescht"] += 1
             info["details"].append({"zeile": nr, "aktion": "gelöscht", "titel": titel})
             conn_echt.execute("RELEASE zeile")
-        except (ZeilenFehler, HTTPException, ValueError, sqlite3.Error) as e:
+        except (ZeilenFehler, HTTPException, ValueError, *DB_FEHLER) as e:
             conn_echt.execute("ROLLBACK TO zeile")
             conn_echt.execute("RELEASE zeile")
             text = e.detail if isinstance(e, HTTPException) else str(e)
