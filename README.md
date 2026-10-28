@@ -21,7 +21,7 @@ Hilfe, sie entstehen mit `werkzeuge/hilfe_bilder.py`.
 ![Übersicht](finanzverwaltung/app/hilfe/bilder/start.uebersicht.png)
 
 **Auswertungen, Saldo-Verlauf:** Kontostände gestapelt und Nettovermögen
-abzüglich Restschuld, mit Prognose aus Vorlagen, Darlehen und Altersvorsorge.
+abzüglich Restschuld, mit Prognose für die kommenden Jahre.
 
 ![Saldo-Verlauf](finanzverwaltung/app/hilfe/bilder/auswertungen.saldo.png)
 
