@@ -11,6 +11,25 @@ im Add-on und verlassen das Gerät nicht. Oberfläche und Hilfe sind deutsch.
 Feiertage werden für das beim ersten Start gewählte Bundesland markiert,
 fällige Termine verschieben sich nach dem Bankenkalender (TARGET).
 
+## Bilder
+
+Alle Bilder zeigen erfundene Demo-Daten. Es sind die Bilder der eingebauten
+Hilfe, sie entstehen mit `werkzeuge/hilfe_bilder.py`.
+
+**Übersicht:** Gesamtsaldo, Konten mit Sparzielen und letzte Buchungen.
+
+![Übersicht](finanzverwaltung/app/hilfe/bilder/start.uebersicht.png)
+
+**Auswertungen, Saldo-Verlauf:** Kontostände gestapelt und Nettovermögen
+abzüglich Restschuld, mit Prognose aus Vorlagen, Darlehen und Altersvorsorge.
+
+![Saldo-Verlauf](finanzverwaltung/app/hilfe/bilder/auswertungen.saldo.png)
+
+**Schnellbuchung auf dem Handy:** alle Felder auf einen Blick, die Kategorie
+wird aus der Beschreibung vorgeschlagen.
+
+<img src="finanzverwaltung/app/hilfe/bilder/schnellbuchung.nutzen.png" alt="Schnellbuchung" width="300">
+
 ## Installation
 
 1. In Home Assistant: Einstellungen → Apps (früher Add-ons) → App-Store →
