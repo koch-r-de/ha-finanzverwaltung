@@ -10,6 +10,9 @@ Alles läuft lokal in Home Assistant. Die Daten liegen in einer SQLite-Datenbank
 im Add-on und verlassen das Gerät nicht. Oberfläche und Hilfe sind deutsch.
 Feiertage werden für das beim ersten Start gewählte Bundesland markiert,
 fällige Termine verschieben sich nach dem Bankenkalender (TARGET).
+Auf Wunsch schützt eine Sperre mit PIN, Passwort oder Muster den Zugang, und
+die Datenbank samt Backups lässt sich mit einer Passphrase verschlüsseln
+(SQLCipher). Beides ist ausgeschaltet, bis man es einschaltet.
 
 ## Bilder
 

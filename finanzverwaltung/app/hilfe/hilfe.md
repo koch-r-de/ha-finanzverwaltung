@@ -1170,6 +1170,7 @@ rest:
 **Gut zu wissen**
 
 - Die beiden Sensoren unter rest sind freiwillig. Du brauchst sie, wenn Siri Konto und Kategorie zur Auswahl anbieten soll.
+- Bei eingeschalteter Sperre oder verschlossener Datenbank liefern die beiden Sensoren keine Daten. Siri bucht trotzdem, wenn du Konto und Kategorie im Kurzbefehl nennst.
 
 **Siehe auch:** [Siri: Kurzbefehl anlegen](#schnellbuchung.siri-kurzbefehl)
 

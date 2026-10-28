@@ -34,6 +34,14 @@ Backups mit ausgewählt wird. Die Daten verlassen das Gerät nicht.
 Zum Sichern und Zurückspielen dienen in der Administration „Datenbank
 herunterladen“ und „Datenbank wiederherstellen“.
 
+Seit 3.0 liegen dort je nach Schutz zusätzlich `schutz.json` (Hashes und
+verpackte Schlüssel von Sperre und Verschlüsselung), `schutz_zaehler.json`
+(Fehlversuche), `auszug.json` (Namen von Konten, Kategorien, Sparzielen bei
+eingeschalteter Verschlüsselung) und der Ordner `stapel/` (vorgemerkte
+Buchungen, verschlüsselt). Ohne `schutz.json` lässt sich eine verschlüsselte
+`finanzdaten.db` nur mit einem verschlüsselten Download (.fvdb) und der
+Passphrase oder dem Wiederherstellungsschlüssel wieder öffnen.
+
 **Eine Deinstallation löscht `/data` und damit alle Daten.** Vorher immer
 die Datenbank herunterladen.
 
@@ -145,6 +153,197 @@ das Feld "Darlehenssumme" (vertraglich vereinbarter Betrag, Pflicht bei
 neuen Darlehen); die Karte zeigt daraus den noch nicht ausgezahlten Rest.
 Bestehende Darlehen bleiben ohne Summe, bis sie über "Ändern" nachgetragen
 wird.
+
+## Neu in Version 3.0
+
+**Sperre und Verschlüsselung (Issue #5, Wunsch des Anwenders):** Zwei
+Schutzfunktionen, unabhängig voneinander ein- und ausschaltbar in der
+Administration, Reiter „Sicherheit“. Beide sind nach dem Update aus. Ohne
+beides verhält sich 3.0 wie 2.7 (Nachweis unten). Schutzziele laut Planung:
+Mitnutzer am Gerät, andere Home-Assistant-Benutzer, Diebstahl oder Verlust des
+Geräts. Nicht Ziel: Administratoren mit Zugang zum Terminal, solange die
+Datenbank entsperrt ist.
+
+*Wer ändern darf.* Nur Administratoren von Home Assistant, bei eingeschalteter
+Sperre zusätzlich nur freigegebene mit gültiger Anmeldung. Das Adminrecht
+kommt aus dem Header `X-Remote-User-Groups` mit der Gruppe `system-admin`
+(`HOMEASSISTANT_GROUP_ID_ADMIN` in `supervisor/const.py`). Den Header setzt
+der Supervisor erst seit Commit 3fbb083b vom 21.10.2026 (PR #7398), enthalten
+ab Tag 2026.10.5. Ob diese Version schon im stabilen Kanal ist, war beim Bau
+nicht sicher. Der Header fehlt auch, wenn der Supervisor die Gruppen nicht
+kennt (Sitzung angelegt, während Core nicht erreichbar war). Fehlt er, gilt
+der Benutzer nicht als Admin, die Einstellungen sind nur lesbar und nennen den
+Grund. Eine Abfrage bei Core als Ersatz wurde verworfen, weil das Add-on dafür
+Adminrechte bei Core bräuchte, genau das, was PR #7398 vermeiden will. Die
+Benutzerkennung kommt aus `X-Remote-User-Id`, `X-Remote-User-Name` und
+`X-Remote-User-Display-Name`. Der Supervisor ersetzt diese Header immer, ein
+Browser kann sie nicht unterschieben (`_init_header` in
+`supervisor/api/ingress.py`). Das gilt nur über Ingress. Deshalb lässt sich die
+Sperre nur einschalten, wenn `herkunft_pruefen` auf `sperren` steht (Befund Q).
+Die Schutzeinstellungen stehen in `/data/schutz.json`, nicht in den
+Add-on-Optionen und nicht in der Datenbank, weil sie vor dem Entsperren lesbar
+sein müssen. Darin stehen nur Hashes und verpackte Schlüssel.
+
+*Sperre.* `SchutzMiddleware` in `main.py` prüft jede Anfrage im Server. Frei
+sind nur die Seiten, Skripte, Hilfe, Feiertagsliste und die Endpunkte zum
+Anmelden und Entsperren. Ohne gültige Sitzung kommt 401 mit `schutz=code`,
+für Benutzer außerhalb der Freigabeliste 403. Der Code ist PIN, Passwort oder
+Muster auf einem 3×3-Raster, gespeichert als Argon2id-Hash von `art:code`
+(`argon2-cffi`, Standardwerte). Mindestlängen PIN 6, Passwort 8, Muster 5
+Punkte, in der Administration erhöhbar, nie niedriger. Nach dem richtigen Code
+gibt es ein zufälliges Token (24 Byte), das der Browser im Header
+`X-Finanz-Sitzung` mitschickt. Es liegt nur im Arbeitsspeicher des Servers und
+im `sessionStorage` des Tabs. Ein Cookie wurde verworfen: Mit dem Pfad `/` hätte
+der Supervisor es an alle anderen Add-ons weitergereicht, die über Ingress
+aufgerufen werden. Fehlversuche: ab dem 5. Fehlversuch 1 Minute Wartezeit,
+verdoppelnd bis höchstens 1 Stunde, nach 5 bis 20 Fehlversuchen (einstellbar)
+oder nie die Sperre bis zur Freigabe. Die Zähler stehen in
+`schutz_zaehler.json` und überdauern Neustarts. Versuche während der
+Wartezeit zählen nicht. Freigabe durch einen anderen freigegebenen Benutzer,
+mit der Passphrase der Verschlüsselung oder mit dem Wiederherstellungsschlüssel
+der Sperre. Eine Add-on-Option zum Zurücksetzen wurde verworfen (Entscheidung
+41). Damit ein einzelner Benutzer ohne Verschlüsselung nicht dauerhaft
+aussperrt ist, erzeugt das Einschalten der Sperre einen eigenen
+Wiederherstellungsschlüssel (160 Bit), gespeichert nur als SHA-256 mit Salz.
+Weitere Benutzer öffnen die Finanzverwaltung einmal, erscheinen dann in der
+Auswahl und legen nach der Freigabe ihren Code selbst fest. Bekannte Benutzer
+merkt sich das Programm nur bei eingeschalteter Sperre, ohne Sperre legt 3.0
+keine Datei an. Automatische Sperre nach Untätigkeit, Vorgabe 5 Minuten, im
+Browser über Tippen, Klicken und Tasten gemessen, im Server über die letzte
+Anfrage. Bei Tätigkeit ohne Anfrage hält `/api/schutz/puls` die Sitzung höchstens
+einmal je Minute. Wahlweise sperrt auch das Verlassen des Tabs oder der App
+(`visibilitychange`).
+
+Schnellbuchung „ohne Code nur erfassen“: eigene Endpunkte unter
+`/api/erfassen/`, Antwort ohne gespeicherte Daten, keine letzten Buchungen,
+kein Hinweis auf mögliche Doppelbuchungen. Siri bei Sperre: nur von
+172.30.32.1 (Home Assistant), Antwort nur „Betrag Euro gebucht.“, Fehler ohne
+gespeicherte Namen (Entscheidung 45).
+
+*Verschlüsselung.* SQLCipher 4.12 über `sqlcipher3-wheels` 0.5.7 mit einem
+zufälligen Datenschlüssel (32 Byte) als Rohschlüssel. Er liegt zweimal
+verpackt (AES-256-GCM) in `schutz.json`: mit der Passphrase über Argon2id
+(t = 3, 64 MiB, p = 4, die zweite Empfehlung aus RFC 9106) und mit dem
+Wiederherstellungsschlüssel (160 Bit, Base32 in Vierergruppen, HKDF-SHA256).
+Eine neue Passphrase verpackt nur neu, die Datei bleibt bitgleich. Dadurch
+bleiben Backups und verschlüsselte Downloads mit dem Wiederherstellungsschlüssel
+lesbar. Der Schlüssel liegt nur im Arbeitsspeicher. Nach jedem Start ist die
+Datenbank zu, `startup.ausfuehren()` (Migrationen, fällige Buchungen,
+Plan → Ist, Backup) läuft erst beim Entsperren. Falsche Passphrasen bekommen
+dieselbe Wartezeit wie Codes, aber keine dauerhafte Sperre. `db.verbindung()`
+öffnet bei eingeschalteter Verschlüsselung mit SQLCipher, sonst wie bisher mit
+`sqlite3`. Weil `sqlcipher3` eigene Fehlerklassen hat, fangen
+`buchungen.kategorie_loeschen` und der XLSX-Import jetzt die Klassen beider
+Treiber (`db.FEHLER`, `db.INTEGRITAETSFEHLER`).
+
+Einschalten auf echten Daten (Entscheidung 44): Vorher muss die Datenbank
+unverschlüsselt heruntergeladen worden sein (in den letzten 30 Minuten), der
+Wiederherstellungsschlüssel abgetippt und eine Phrase bestätigt werden. Dann
+Backup, verschlüsselte Kopien von Datenbank und allen Backups mit
+`sqlcipher_export`, jede Kopie mit dem Schlüssel aus der Passphrase und mit dem
+aus dem Wiederherstellungsschlüssel geöffnet und über eine Prüfsumme aus Schema
+und allen Zeilen mit dem Original verglichen. Erst danach werden die Schlüssel
+gespeichert und die Dateien getauscht. Bricht der Vorgang zwischen Speichern
+und Tauschen ab, verschlüsselt das nächste Entsperren die übrigen Dateien
+nach. Während der Umstellung antworten andere Anfragen mit 503. Restrisiko:
+Auf Speicherkarten und SSDs können Reste der unverschlüsselten Datei bleiben,
+bis der Speicher neu beschrieben wird. Ausschalten entschlüsselt alles mit
+denselben Prüfungen.
+
+Stapel: Ist die Datenbank zu, legen Siri und die Schnellbuchung Buchungen als
+einzelne Dateien in `/data/stapel/` ab, sofort verschlüsselt mit einem
+eigenen X25519-Schlüssel je Eintrag, HKDF-SHA256 und AES-256-GCM. Der
+private Stapelschlüssel liegt mit dem Datenschlüssel verpackt in
+`schutz.json`. Beim Entsperren bucht das Programm die Einträge in der
+Reihenfolge der Erfassung mit denselben Prüfungen wie Siri und die
+Schnellbuchung. Was scheitert, kommt in die Klärliste (neue Tabelle
+`klaerliste`). Die Kennung jedes Eintrags wird mit der Buchung in
+`stapel_erledigt` festgeschrieben, ein Absturz vor dem Löschen der Datei führt
+nicht zu einer doppelten Buchung. Konten, Kategorien, Sparziele und das
+Bundesland stehen als `auszug.json` unverschlüsselt daneben (Entscheidung 29),
+erneuert nach jeder erfolgreichen Änderung. Die Regeln gehören nicht dazu,
+deshalb verlangen Siri und die Schnellbuchung im verschlossenen Zustand immer
+eine Kategorie. Entsperrt gilt bei Siri wie bisher die Kategorisierung über
+Regeln (Entscheidung 49).
+
+Downloads: Bei eingeschalteter Verschlüsselung liefert „Datenbank
+herunterladen“ eine `.fvdb`-Datei: Kennung `FVDB1`, die beiden verpackten
+Schlüssel, dann die SQLCipher-Datei. Öffnen lässt sie sich mit der Passphrase
+vom Zeitpunkt des Downloads oder dem Wiederherstellungsschlüssel. Der
+XLSX-Export bekommt ein Excel-Kennwort (`msoffcrypto-tool` 6.0.0, dort als
+experimentell gekennzeichnet, mit Excel selbst nicht geprüft), das bei jedem
+Export eingegeben wird und mindestens so lang sein muss wie die
+Passphrase. Unverschlüsselt geht beides nur mit Phrase, die Kopie wird nach
+dem Senden gelöscht. Damit Kennwort und Phrase nie in einer Adresse stehen
+(das Zugriffsprotokoll von Uvicorn schreibt Adressen mit), bereitet
+`POST /api/admin/download` den Inhalt vor und gibt ein einmaliges Ticket für
+2 Minuten. Der Browser lädt dann über `GET /api/download/<ticket>` wie bisher
+über einen Link. Ohne Sperre und Verschlüsselung bleiben die Links von 2.7.
+„Datenbank wiederherstellen“ öffnet `.fvdb` mit Passphrase oder Schlüssel, der
+Import öffnet XLSX mit Kennwort. Eine eingespielte Datei übernimmt den
+Schutzzustand der Installation, sie liegt schon im Zwischenordner im
+passenden Zustand.
+
+*Pakete.* Für Alpine mit Python 3.12 gibt es fertige Pakete für aarch64 und
+amd64 (`pip download --only-binary=:all: --platform musllinux_1_2_aarch64`
+bzw. `musllinux_1_2_x86_64`, am 28.10.2026): `sqlcipher3-wheels` 0.5.7,
+`cryptography` 50.0.2, `argon2-cffi` 25.1.0 mit `argon2-cffi-bindings`
+26.1.0, `cffi` 2.1.1, `msoffcrypto-tool` 6.0.0 mit `olefile` 0.47. Der
+Docker-Bau selbst ließ sich in der Testumgebung nicht ausführen.
+
+**Messung** (`tests/v30_messung.py`, Testdaten mit 20 000 zusätzlichen
+Buchungen, 2,3 MB, Testrechner Intel Xeon 2,1 GHz mit 2 Kernen): Argon2id
+allein 123 ms, Entsperren mit Programmstart 158 ms, Einschalten 1,7 s.
+Abfragen mit Verschlüsselung um 25 bis 70 Prozent langsamer, im Mittel
+10 bis 20 ms mehr je Anfrage, weil jede Anfrage eine Verbindung öffnet und die
+Seiten entschlüsselt. Der Saldo-Verlauf über zwei Jahre (rund 1 s) ändert
+sich nicht messbar. Schätzung für den Raspberry Pi 5, nicht gemessen:
+Faktor 1,5 bis 3, also Entsperren unter 1 s, Einschalten einige Sekunden,
+Abfragen 20 bis 60 ms länger.
+
+**Befund V (gefunden beim Testlauf vor dem Bau, besteht seit 2.0 bzw.
+1.10):** Zwei Testerwartungen hingen am Testtag. Die Vorlage „Gehalt“ der
+Testdaten hat den 28. als Tag, am 28.10.2026 wurde sie beim Start gebucht.
+`funktion_test.py` erwartete danach einen festen Saldo des Girokontos,
+`v2_test.py` noch eine anstehende Einnahme im laufenden Monat. Am Code lag es
+nicht (gleicher Code bestand am Vortag). Behebung freigegeben: `funktion`
+prüft die Saldoänderung durch die Umbuchungsvorlage, `v2` legt für den Rest
+des Monats eine eigene Einnahme am letzten Bankarbeitstag an.
+
+**Befund W (gefunden beim Bau, folgt aus Entscheidung 45, noch nicht
+entschieden):** Die freiwilligen `rest`-Sensoren der Siri-Anleitung („Finanz
+Kategorien“, „Finanz Konten“) fragen `/api/siri/favoriten` und `/api/konten`
+ohne Benutzer ab. Bei eingeschalteter Sperre bekommen sie 403, bei
+verschlossener Datenbank 423, Home Assistant meldet dann alle 5 Minuten einen
+Fehler. Siri bucht weiter, wenn Konto und Kategorie im Kurzbefehl stehen. Die
+Hilfe nennt das. Eine Ausnahme für diese Abfragen würde Konten- und
+Kategorienamen als Sensorwerte für alle Home-Assistant-Benutzer sichtbar
+machen.
+
+**Nachweis „ohne Schutz wie 2.7“:** Alle Testreihen der Vorversionen laufen
+unverändert. `v30_test.py` startet dazu denselben Datenbestand einmal mit dem
+Code von 2.7 und einmal mit 3.0 und vergleicht 29 Abfragen, Siri- und
+Formularbuchung, Download, Export und Vorlage (gleich bis auf den Zeitstempel
+`erstellt_am` der neuen Buchungen) und prüft, dass 3.0 ohne Schutz keine
+Datei anlegt, auch mit Benutzer-Headern. `upgrade_test.py` zieht eine
+Datenbank mit dem Code von 2.7 hoch, startet 3.0, vergleicht alle Tabellen,
+schaltet auf den hochgezogenen Daten die Verschlüsselung ein, startet neu,
+entsperrt und schaltet wieder aus: Inhalt aller Tabellen gleich. Seit 3.0
+läuft der Upgrade-Test in `alle_tests.py` mit (Code von 2.7 aus Commit
+5e7b84c per `git archive`).
+
+Tests: `v30_test.py` (fachlich, mit Fehlerfällen, eingefrorene Uhr der Sperre
+über `schutzdatei.uhr`), `ui30_test.py` (Oberfläche mit eigenen Serverstarts
+und Neustarts, Ingress-Header über Playwright, iPhone-Ansicht). Geprüft unter
+anderem: keine bekannten Klartexte in Datenbank, Backups, Stapel und
+Download, kein Schlüssel, keine Passphrase und kein Kennwort in Dateien oder
+Protokoll, alle 106 geschützten Endpunkte ohne Code abgewiesen, Wartezeiten
+1, 2, 4, 8, 16 Minuten und Deckel 1 Stunde, Stapel über einen Neustart, Absturz
+zwischen Buchen und Löschen, Klärliste, Wiederherstellungsschlüssel, Ändern der
+Passphrase, Download in beiden Formen, XLSX mit Kennwort hin und zurück.
+Gegenprobe: Die Klartextprüfung findet in der Datenbank von 2.7 alle Proben.
+Nicht geprüft: Docker-Bau, echte Ingress-Header eines Supervisors 2026.10.5,
+Downloads in der Companion-App, Öffnen der Kennwort-XLSX in Excel.
 
 ## Neu in Version 2.7
 

@@ -56,7 +56,10 @@ Für die Oberflächentests startet das Skript den Server auf Port 8935.
 | `ui27_test.py` | 2.7: Panel der Integration eingebettet wie in Home Assistant (volle Höhe wie seit 2.6.4, Befund S ohne Adminrecht, Befund T Ingress-Sitzung mit Uhr-Attrappe, ältere HA-Version); optional Pfad einer anderen Panel-Datei für die Gegenprobe. Ersetzt `ui264_test.py` | `daten/v191` |
 | `ui263_test.py` | 2.6.3: Schnellbuchung (Issue #4 Eingabetaste, Befund R, Vorauswahl der Kategorie, alle Felder sichtbar) | `daten/v191` |
 | `ui26_test.py` | 2.6: Bundesland-Abfrage, Hinweise, Symbol in der Liste, Dialoge | `daten/v191` ohne gewähltes Bundesland |
-| `upgrade_test.py` | Update einer Datenbank mit Vergleich aller Tabellen | beliebig, siehe unten |
+| `v30_test.py` | 3.0: Sperre und Verschlüsselung (Gegenprobe ohne Schutz mit dem Code von 2.7, Klartexte, Schlüssel, alle Endpunkte ohne Code, Fehlversuche mit eingefrorener Uhr, Stapel über Neustart, Klärliste, Wiederherstellungsschlüssel, Passphrase ändern, Downloads, XLSX mit Kennwort) | `daten/v21`, Code von 2.7 als viertes Argument |
+| `ui30_test.py` | 3.0: Oberfläche von Sperre und Verschlüsselung, startet den Server selbst (Neustarts, Herkunftsprüfung `sperren`), Ingress-Header über Playwright | `daten/v191` |
+| `upgrade_test.py` | Update einer Datenbank mit Vergleich aller Tabellen, seit 3.0 auch in `alle_tests.py` (2.7 nach 3.0 mit Ein- und Ausschalten der Verschlüsselung) | beliebig, siehe unten |
+| `v30_messung.py` | keine Testreihe: Dauer von Einschalten, Entsperren und Abfragen mit und ohne Verschlüsselung | `daten/v21` plus erfundene Buchungen |
 
 Einzeln aufrufen: `python3 tests/v24_test.py finanzverwaltung <quelle> <ziel> [weitere]`.
 `<quelle>` ist ein Ordner mit `finanzdaten.db`, `<ziel>` wird überschrieben.
@@ -71,6 +74,13 @@ Monats eine eigene Einnahme an. Vorher hingen beide am Testtag (Gehalt am 28.).
 vier Konten, Vorlagen, Sparziel, Darlehen, Altersvorsorge). `daten/v20` und
 `daten/v21` sind dieselben Daten, mit 2.0 bzw. 2.1 hochgezogen. Die Daten sind
 erfunden, Backup-Listen sind geleert.
+
+`alle_tests.py` holt den Code der Vorversion seit 3.0 selbst per
+`git archive` aus dem Commit in `VORVERSION` nach `tests/ausgabe/vorversion`
+und nutzt ihn für `v30_test.py` und den Upgrade-Test. In einem flachen Klon
+ohne diesen Commit meldet es beide als übersprungen. `v30_test.py` und
+`ui30_test.py` brauchen die Pakete aus `requirements-docker.txt`
+(`sqlcipher3-wheels`, `cryptography`, `argon2-cffi`, `msoffcrypto-tool`).
 
 `upgrade_test.py` prüft ein Update: erst mit dem Code der alten Version eine
 Datenbank hochziehen, dann mit dem neuen Code, und alle Tabellen vergleichen.
