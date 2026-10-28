@@ -60,6 +60,10 @@ with TestClient(app) as c:
 
     # ── Umbuchungs-Vorlage anlegen (mit Inflation/Dynamik/negativem Betrag -> erzwungen neutral) ──
     sz = ok(c.get("/api/sparziele"))[0]["id"]
+    # Befund V (3.0): Salden vor der Vorlage merken. Andere Vorlagen (Gehalt am
+    # 28.) buchen je nach Testtag schon beim Start, absolute Salden wären an den
+    # Testtag gekoppelt.
+    salden_vorher = {k["name"]: k["saldo"] for k in ok(c.get("/api/konten"))}
     sz_vorher = next(b for b in ok(c.get("/api/budgets")) if b["typ"] == "sparziel")["verbrauch"]
     vid = ok(c.post("/api/wiederkehrend", json={**basis, "betrag": -200, "zielkonto_id": tg, "kategorie_id": KAT["Wohnen"],
         "inflationsflag": True, "dynamik_aktiv": True, "dynamik_prozent": 5, "dynamik_rhythmus_jahre": 1,
@@ -76,7 +80,10 @@ with TestClient(app) as c:
     prot = ok(c.get("/api/plan-buchungen/protokoll?limit=500"))
     pruef("Protokolleinträge vorhanden", all(any(p["buchung_id"] == b["id"] for p in prot) for b in erzeugt))
     salden = {k["name"]: k["saldo"] for k in ok(c.get("/api/konten"))}
-    pruef("Salden: Giro -600, Tagesgeld +600", salden["Girokonto"] == 8600.4 - 600 and salden["Tagesgeld"] == 10300 + 600, salden)
+    summe = 200 * len(erzeugt)
+    pruef("Salden: Giro -200 und Tagesgeld +200 je erzeugter Übertragung",
+          round(salden["Girokonto"] - salden_vorher["Girokonto"], 2) == -summe
+          and round(salden["Tagesgeld"] - salden_vorher["Tagesgeld"], 2) == summe, (salden_vorher, salden))
     sz_nachher = next(b for b in ok(c.get("/api/budgets")) if b["typ"] == "sparziel")["verbrauch"]
     pruef("Sparziel-Ist +600", round(sz_nachher - sz_vorher, 2) == 600, (sz_vorher, sz_nachher))
     auto = ok(c.get("/api/buchungen?herkunft=wiederkehrend"))

@@ -55,13 +55,25 @@ with TestClient(app) as c:
     # ── Punkt 1 ──
     monatsende = (date(HEUTE.year, HEUTE.month, 1) + relativedelta(months=1) - timedelta(days=1))
     lfd = HEUTE.strftime("%Y-%m")
+    # Befund V (3.0): Die Testdaten haben ihre letzte Einnahme am 28. (Gehalt).
+    # Ab dann gäbe es im laufenden Monat keine anstehende Einnahme mehr. Eine
+    # eigene Vorlage am letzten Bankarbeitstag des Monats hält die Prüfung
+    # unabhängig vom Testtag. Ist heute schon dieser Tag, entfällt nur die
+    # Forderung „anstehend > 0“.
+    from app.core import feiertage as _ft
+    letzter_bt = _ft.vorheriger_werktag(monatsende, _ft.bank_kalender())
+    test_einnahme = None
+    if letzter_bt > HEUTE:
+        test_einnahme = ok(c.post("/api/wiederkehrend", json={"konto_id": giro, "betrag": 123, "kategorie_id": KAT["Gehalt & Lohn"],
+            "intervall": "monatlich", "tag_des_monats": letzter_bt.day, "startdatum": letzter_bt.isoformat(),
+            "enddatum": letzter_bt.isoformat(), "beschreibung": "Testeinnahme Monatsende"}))["id"]
     anst = [b for b in ok(c.get(f"/api/buchungen?inkl_anstehende=true&bis={monatsende.isoformat()}")) if b.get("virtuell")]
     anst_ein = round(sum(b["betrag"] for b in anst if b["betrag"] > 0 and b["typ"] != "Uebertragung"), 2)
     anst_aus = round(sum(-b["betrag"] for b in anst if b["betrag"] < 0 and b["typ"] != "Uebertragung"), 2)
     cf = ok(c.get(f"/api/auswertungen/cashflow?von={HEUTE.isoformat()}&bis={(HEUTE + relativedelta(months=3)).isoformat()}"))
     i = cf["monate"].index(lfd)
     pruef("P1: Cashflow liefert anstehenden Anteil des laufenden Monats",
-          cf["einnahmen_anstehend"][i] == anst_ein and cf["ausgaben_anstehend"][i] == anst_aus and anst_ein > 0,
+          cf["einnahmen_anstehend"][i] == anst_ein and cf["ausgaben_anstehend"][i] == anst_aus and (anst_ein > 0 or test_einnahme is None),
           (cf["einnahmen_anstehend"][i], anst_ein, cf["ausgaben_anstehend"][i], anst_aus))
     pruef("P1: anstehender Anteil nur im laufenden Monat", all(v == 0 for j, v in enumerate(cf["einnahmen_anstehend"]) if j != i))
     gebucht_ein = sum(b["betrag"] for b in ok(c.get(f"/api/buchungen?von={lfd}-01&bis={monatsende.isoformat()}"))
@@ -78,6 +90,8 @@ with TestClient(app) as c:
     jahr = ok(c.get("/api/auswertungen/jahresuebersicht"))
     lm = next(m for m in jahr["monate"] if m["monat"] == lfd)
     pruef("P1: Jahresübersicht lfd. Monat enthält anstehende Termine", lm["anstehend"] > 0 and lm["einnahmen"] == round(cf["einnahmen"][i], 2), lm)
+    if test_einnahme:
+        c.delete(f"/api/wiederkehrend/{test_einnahme}")
     # Budget-Details: Vorlage Lebensmittel am Monatsende
     letzter = monatsende if monatsende.weekday() < 5 else monatsende - timedelta(days=monatsende.weekday() - 4)
     vid = ok(c.post("/api/wiederkehrend", json={"konto_id": giro, "betrag": 77, "kategorie_id": KAT["Lebensmittel/Verpflegung"],

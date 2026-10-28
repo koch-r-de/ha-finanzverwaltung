@@ -61,6 +61,10 @@ Für die Oberflächentests startet das Skript den Server auf Port 8935.
 Einzeln aufrufen: `python3 tests/v24_test.py finanzverwaltung <quelle> <ziel> [weitere]`.
 `<quelle>` ist ein Ordner mit `finanzdaten.db`, `<ziel>` wird überschrieben.
 
+Befund V (3.0): `funktion_test.py` prüft die Salden nach der Umbuchungsvorlage
+als Änderung gegenüber vorher, `v2_test.py` legt für den Rest des laufenden
+Monats eine eigene Einnahme an. Vorher hingen beide am Testtag (Gehalt am 28.).
+
 ## Testdatenbanken
 
 `daten/v191` wurde mit Version 1.9.1 über die Schnittstelle angelegt (Personen,
