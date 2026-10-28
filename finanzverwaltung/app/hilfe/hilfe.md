@@ -1655,6 +1655,7 @@ Die Finanzverwaltung fragt beim Öffnen nach einem Code. Ändern dürfen das nur
 Die Add-on-Option „herkunft_pruefen“ steht nicht auf „sperren“. Dann können andere Add-ons im Netz von Home Assistant die Finanzverwaltung ohne Code aufrufen. Die Sperre lässt sich erst einschalten, wenn die Option auf „sperren“ steht.
 <!-- /hinweis -->
 
+- Sperre und Verschlüsselung brauchen Supervisor 2026.10.5 oder neuer, den Systemteil von Home Assistant. Nur damit erkennt das Programm Administratoren sicher. Mit einem älteren Supervisor lässt sich der Schutz nicht einschalten. Welche Version gefunden wurde, steht dann im Block „Sperre“.
 - Die Sperre wirkt im Programm selbst, nicht nur auf der Seite. Auch direkte Aufrufe der Schnittstelle brauchen den Code.
 - Mindestlängen: PIN 6 Ziffern, Passwort 8 Zeichen, Muster 5 Punkte. Du kannst sie unter „Einstellungen“ erhöhen, nie senken.
 - Ab dem fünften Fehlversuch wartest du eine Minute, danach jeweils doppelt so lange, höchstens eine Stunde. Nach der eingestellten Zahl von Fehlversuchen ist der Benutzer gesperrt, bis ihn jemand freigibt.

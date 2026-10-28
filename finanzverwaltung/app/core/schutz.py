@@ -13,6 +13,13 @@ Adminrecht = Gruppe „system-admin“ im Header (HOMEASSISTANT_GROUP_ID_ADMIN i
 supervisor/const.py). Fehlt der Header, gilt der Benutzer nicht als Admin
 (Entscheidung 43).
 
+Befund X: Supervisor vor 2026.10.5 kennt X-Remote-User-Groups nicht und reicht
+einen vom Browser gesetzten Header unverändert durch (_REQUEST_HEADERS_FILTER
+vor Commit 3fbb083b). Gewertet wird der Header deshalb nur, wenn der
+Supervisor nachweislich 2026.10.5 oder neuer ist. Die Version liest das
+Add-on über GET http://supervisor/supervisor/info (hassio_api: true, Rolle
+default erlaubt nur …/info, supervisor/api/middleware/security.py).
+
 Codes: PIN, Passwort oder Muster auf einem 3×3-Raster (Punkte 1 bis 9 als
 „1-5-9-6-3“). Gespeichert wird nur ein Argon2id-Hash von „art:code“.
 
@@ -22,10 +29,14 @@ des Servers und verfällt nach der eingestellten Untätigkeit.
 """
 import hashlib
 import hmac
+import json
 import logging
 import os
+import re
 import secrets
 import threading
+import time
+import urllib.request
 
 from . import schutzdatei, tresor, zeit
 
@@ -37,6 +48,9 @@ KOPF_NAME = "x-remote-user-name"
 KOPF_ANZEIGE = "x-remote-user-display-name"
 KOPF_GRUPPEN = "x-remote-user-groups"
 KOPF_SITZUNG = "x-finanz-sitzung"
+
+SUPERVISOR_MINDESTVERSION = (2026, 10, 5)
+_SUPERVISOR = {"version": None, "geprueft": 0.0}
 
 ARTEN = ("pin", "passwort", "muster")
 MINDEST_UNTERGRENZE = {"pin": 6, "passwort": 8, "muster": 5}   # Entscheidung 40
@@ -55,17 +69,52 @@ class SperreFehler(ValueError):
         self.status = status
 
 
+# ─── Supervisor-Version (Befund X) ───────────────────────────────────
+
+def supervisor_version() -> str | None:
+    """Version des Supervisors, zwischengespeichert. FINANZAPP_SUPERVISOR_VERSION
+    ersetzt die Abfrage (nur für Tests). Scheitert die Abfrage, wird sie
+    höchstens einmal je Minute wiederholt."""
+    fest = os.environ.get("FINANZAPP_SUPERVISOR_VERSION")
+    if fest is not None:
+        return fest or None
+    if _SUPERVISOR["version"] or time.monotonic() - _SUPERVISOR["geprueft"] < 60:
+        return _SUPERVISOR["version"]
+    _SUPERVISOR["geprueft"] = time.monotonic()
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        return None
+    try:
+        anfrage = urllib.request.Request("http://supervisor/supervisor/info",
+                                         headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(anfrage, timeout=3) as antwort:
+            _SUPERVISOR["version"] = json.load(antwort)["data"]["version"]
+            LOG.info("Supervisor-Version %s", _SUPERVISOR["version"])
+    except (OSError, ValueError, KeyError) as fehler:
+        LOG.info("Supervisor-Version nicht lesbar (%s), Adminrecht wird nicht gewertet", type(fehler).__name__)
+    return _SUPERVISOR["version"]
+
+
+def gruppen_vertrauenswuerdig() -> bool:
+    teile = re.findall(r"\d+", supervisor_version() or "")[:3]
+    return len(teile) == 3 and tuple(int(t) for t in teile) >= SUPERVISOR_MINDESTVERSION
+
+
 # ─── Benutzer aus den Headern ────────────────────────────────────────
 
-def benutzer(kopf) -> dict:
-    """kopf: Mapping mit kleingeschriebenen Header-Namen."""
+def benutzer(kopf, mit_admin: bool = True) -> dict:
+    """kopf: Mapping mit kleingeschriebenen Header-Namen. mit_admin=False
+    (Middleware) fragt die Supervisor-Version nicht ab, das Adminrecht ist
+    dann immer False."""
     gruppen_text = kopf.get(KOPF_GRUPPEN)
     gruppen = [g.strip() for g in (gruppen_text or "").split(",") if g.strip()]
+    vertrauen = mit_admin and gruppen_text is not None and gruppen_vertrauenswuerdig()
     return {
         "id": kopf.get(KOPF_ID) or "",
         "name": kopf.get(KOPF_ANZEIGE) or kopf.get(KOPF_NAME) or "",
-        "admin": ADMIN_GRUPPE in gruppen,
+        "admin": vertrauen and ADMIN_GRUPPE in gruppen,
         "gruppen_bekannt": gruppen_text is not None,
+        "gruppen_vertrauenswuerdig": vertrauen,
     }
 
 
@@ -75,11 +124,11 @@ def bekannt_merken(b: dict) -> None:
     if not b["id"]:
         return
     alt = schutzdatei.laden().get("bekannt", {}).get(b["id"])
-    if alt and alt.get("name") == b["name"] and alt.get("admin") == b["admin"]:
+    if alt and alt.get("name") == b["name"]:
         return
 
     def merken(d):
-        d.setdefault("bekannt", {})[b["id"]] = {"name": b["name"], "admin": b["admin"]}
+        d.setdefault("bekannt", {})[b["id"]] = {"name": b["name"]}
     schutzdatei.aendern(merken)
 
 
@@ -335,7 +384,7 @@ def einschalten_vorbereiten(b: dict, eingabe: dict, art: str, code: str, wiederh
     if not b["id"]:
         raise SperreFehler("Kein Home-Assistant-Benutzer erkannt. Bitte über Home Assistant öffnen.", 403)
     if not b["admin"]:
-        raise SperreFehler("Nur Administratoren von Home Assistant können die Sperre einschalten.", 403)
+        verwalter_pruefen(b, None)
     e = _einstellungen_pruefen(eingabe)
     code = code_pruefen_format(art, code, e["mindest"])
     if code != code_pruefen_format(art, wiederholung, e["mindest"]):
@@ -371,9 +420,12 @@ def verwalter_pruefen(b: dict, token: str | None) -> None:
     """Ändern dürfen nur freigegebene Benutzer mit Adminrecht und gültiger
     Sitzung (Entscheidung 27). Ohne Sperre genügt das Adminrecht."""
     if not b["admin"]:
-        text = ("Nur Administratoren von Home Assistant dürfen den Schutz ändern."
-                if b["gruppen_bekannt"] else
-                "Das Adminrecht ist nicht erkennbar. Dafür ist Supervisor 2026.10.5 oder neuer nötig.")
+        if b["gruppen_bekannt"] and b["gruppen_vertrauenswuerdig"]:
+            text = "Nur Administratoren von Home Assistant dürfen den Schutz ändern."
+        else:
+            gefunden = supervisor_version()
+            text = ("Das Adminrecht ist nicht sicher erkennbar. Dafür ist Supervisor 2026.10.5 oder neuer nötig"
+                    + (f" (gefunden: {gefunden})." if gefunden else "."))
         raise SperreFehler(text, 403)
     if aktiv() and not (freigegeben(b["id"]) and sitzung_gueltig(token, b["id"])):
         raise SperreFehler("Nur freigegebene Benutzer mit gültiger Anmeldung dürfen den Schutz ändern.", 403)

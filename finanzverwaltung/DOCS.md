@@ -174,7 +174,9 @@ nicht sicher. Der Header fehlt auch, wenn der Supervisor die Gruppen nicht
 kennt (Sitzung angelegt, während Core nicht erreichbar war). Fehlt er, gilt
 der Benutzer nicht als Admin, die Einstellungen sind nur lesbar und nennen den
 Grund. Eine Abfrage bei Core als Ersatz wurde verworfen, weil das Add-on dafür
-Adminrechte bei Core bräuchte, genau das, was PR #7398 vermeiden will. Die
+Adminrechte bei Core bräuchte, genau das, was PR #7398 vermeiden will.
+Gewertet wird der Header nur, wenn der Supervisor 2026.10.5 oder neuer ist
+(Befund X unten). Die
 Benutzerkennung kommt aus `X-Remote-User-Id`, `X-Remote-User-Name` und
 `X-Remote-User-Display-Name`. Der Supervisor ersetzt diese Header immer, ein
 Browser kann sie nicht unterschieben (`_init_header` in
@@ -310,6 +312,37 @@ nicht (gleicher Code bestand am Vortag). Behebung freigegeben: `funktion`
 prüft die Saldoänderung durch die Umbuchungsvorlage, `v2` legt für den Rest
 des Monats eine eigene Einnahme am letzten Bankarbeitstag an.
 
+**Wichtig: Sperre und Verschlüsselung brauchen Supervisor 2026.10.5 oder
+neuer.** Nur damit erkennt die Finanzverwaltung Administratoren sicher. Mit
+einem älteren Supervisor oder wenn er seine Version nicht nennt, gilt niemand
+als Administrator. Dann lassen sich Sperre und Verschlüsselung weder
+einschalten noch ändern. Bereits eingeschalteter Schutz wirkt weiter, nur die
+Verwaltung ist dann gesperrt. Die gefundene Version steht beim Start im
+Protokoll („Supervisor-Version …“) und im Hinweis der Administration. Die
+eigene Version zeigt Home Assistant unter Einstellungen, System, Reparaturen,
+Menü „Systeminformationen“, Abschnitt „Supervisor“ (Pfad ungeprüft).
+
+**Befund X (gefunden bei der Abschlussprüfung im Quelltext des Supervisors,
+betraf nur den Bau von 3.0 vor der Veröffentlichung):** Der Supervisor ersetzt
+die Header `X-Remote-User-*` und filtert vom Browser mitgeschickte heraus
+(`_REQUEST_HEADERS_FILTER` in `supervisor/api/ingress.py`).
+`X-Remote-User-Groups` steht aber erst seit Commit 3fbb083b in dieser Liste.
+Ein älterer Supervisor reicht einen vom Browser gesetzten Header unverändert
+durch. Jeder Home-Assistant-Benutzer hätte sich damit Adminrecht geben und
+zum Beispiel die Verschlüsselung mit eigener Passphrase einschalten können.
+Gegenprobe mit dem Bau vor der Behebung: gefälschter Header, Einschalten
+vorbereitet (200), danach abgewiesen (403). Behebung freigegeben: Das Add-on
+liest beim Start die Version des Supervisors (`hassio_api: true`,
+`GET http://supervisor/supervisor/info`) und wertet den Gruppen-Header nur ab
+2026.10.5. Die Rolle `default` erlaubt dabei nur Abfragen auf `…/info`
+(`role_access` in `supervisor/api/middleware/security.py`). Die
+Sicherheitsbewertung des Add-ons ändert sich dadurch nicht, sie sinkt nur bei
+den Rollen `manager` und `admin` (`rating_security` in
+`supervisor/apps/utils.py`). Schlägt die Abfrage fehl, wird sie höchstens
+einmal je Minute wiederholt, bis dahin gilt niemand als Administrator. Die
+Middleware fragt die Version nie ab, damit keine Anfrage auf den Supervisor
+wartet.
+
 **Befund W (gefunden beim Bau, folgt aus Entscheidung 45, noch nicht
 entschieden):** Die freiwilligen `rest`-Sensoren der Siri-Anleitung („Finanz
 Kategorien“, „Finanz Konten“) fragen `/api/siri/favoriten` und `/api/konten`
@@ -342,6 +375,8 @@ Protokoll, alle 106 geschützten Endpunkte ohne Code abgewiesen, Wartezeiten
 zwischen Buchen und Löschen, Klärliste, Wiederherstellungsschlüssel, Ändern der
 Passphrase, Download in beiden Formen, XLSX mit Kennwort hin und zurück.
 Gegenprobe: Die Klartextprüfung findet in der Datenbank von 2.7 alle Proben.
+Zu Befund X: gefälschter Header bei Supervisor 2026.10.4 und unbekannter
+Version, Lesen der Version mit nachgestellter Antwort des Supervisors.
 Nicht geprüft: Docker-Bau, echte Ingress-Header eines Supervisors 2026.10.5,
 Downloads in der Companion-App, Öffnen der Kennwort-XLSX in Excel.
 

@@ -154,7 +154,7 @@ class SchutzMiddleware:
         if tresor.umstellung_laeuft():
             return await self._antwort(scope, receive, send, 503, "Die Verschlüsselung wird gerade umgestellt. "
                                        "Bitte kurz warten.", "umstellung")
-        b = schutz.benutzer(kopf)
+        b = schutz.benutzer(kopf, mit_admin=False)
         if b["id"] and sperre:   # nur bei Sperre, ohne Schutz legt 3.0 keine Dateien an
             schutz.bekannt_merken(b)
         if pfad == self.SIRI:
@@ -228,6 +228,7 @@ def beim_start():
     global STARTUP_ERGEBNIS
     schutzdatei.neu_laden()
     schutz.sitzungen_beenden()
+    schutz.supervisor_version()   # Befund X: einmal beim Start lesen, steht im Protokoll
     if tresor.beim_start():
         STARTUP_ERGEBNIS = {"gesperrt": True, "migration": []}
         logging.getLogger("app.schutz").info("Datenbank verschlüsselt, Programmstart wartet auf das Entsperren")
@@ -2706,7 +2707,7 @@ def api_sperre_uebersicht(request: Request):
     except schutz.SperreFehler as e:
         grund = str(e)
     return {**schutz.uebersicht(), "ich": b["id"], "verwalten": grund is None, "grund": grund,
-            "herkunft_modus": schutz.herkunft_modus()}
+            "herkunft_modus": schutz.herkunft_modus(), "supervisor": schutz.supervisor_version()}
 
 
 @app.post("/api/schutz/sperre/vorbereiten")

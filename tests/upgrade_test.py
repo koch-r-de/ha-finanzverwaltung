@@ -47,7 +47,7 @@ def schnappschuss(pfad):
 
 def lauf(code, ordner, zeit, skript):
     """Startet den Code in einem eigenen Prozess (TestClient) und führt `skript` mit `c` aus."""
-    env = {**os.environ, "FINANZAPP_DATENVERZEICHNIS": ordner}
+    env = {**os.environ, "FINANZAPP_DATENVERZEICHNIS": ordner, "FINANZAPP_SUPERVISOR_VERSION": "2026.10.5"}
     if zeit:
         env["FINANZAPP_FESTE_ZEIT"] = zeit
     else:

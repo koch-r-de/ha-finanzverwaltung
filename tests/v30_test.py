@@ -14,6 +14,7 @@ code_alt = sys.argv[4] if len(sys.argv) > 4 else None
 shutil.rmtree(ziel, ignore_errors=True); shutil.copytree(quelle, ziel)
 os.environ["FINANZAPP_DATENVERZEICHNIS"] = ziel
 os.environ["FINANZAPP_HERKUNFT_PRUEFEN"] = "sperren"
+os.environ["FINANZAPP_SUPERVISOR_VERSION"] = "2026.10.5"   # Befund X: Gruppen-Header erst ab dieser Version echt
 sys.path.insert(0, code)
 from fastapi.testclient import TestClient
 from app.main import app
@@ -156,6 +157,13 @@ with TestClient(app, client=INGRESS) as c:
     r = c.post("/api/schutz/verschluesselung/vorbereiten", headers=OHNE_GRUPPEN, json={"passphrase": PASS, "wiederholung": PASS})
     pruef("B3 Ohne X-Remote-User-Groups -> 403 mit Hinweis auf Supervisor 2026.10.5",
           r.status_code == 403 and "2026.10.5" in r.text, r.text)
+    for version, name in (("2026.10.4", "2026.10.4"), ("", "unbekannt")):
+        os.environ["FINANZAPP_SUPERVISOR_VERSION"] = version
+        r = c.post("/api/schutz/verschluesselung/vorbereiten", headers=A, json={"passphrase": PASS, "wiederholung": PASS})
+        pruef(f"B3x Befund X: Supervisor {name}, Gruppen-Header könnte gefälscht sein -> 403, kein Adminrecht",
+              r.status_code == 403 and "2026.10.5" in r.text and not c.get("/api/schutz/verschluesselung", headers=A).json()["verwalten"],
+              r.text)
+    os.environ["FINANZAPP_SUPERVISOR_VERSION"] = "2026.10.5"
     r = c.post("/api/schutz/verschluesselung/vorbereiten", headers=A, json={"passphrase": PASS, "wiederholung": PASS})
     pruef("B4 Ohne vorherigen unverschlüsselten Download -> 422", r.status_code == 422 and "herunterladen" in r.text, r.text)
     c.get("/api/admin/datenbank-herunterladen", headers=A)
@@ -613,6 +621,34 @@ with TestClient(app, client=INGRESS) as c:
     st = c.get("/api/schutz/status").json()
     pruef("D12 Nach Neustart offen, kein Schutz aktiv", not st["sperre"]["aktiv"] and not st["verschluesselung"]["aktiv"]
           and c.get("/api/konten").status_code == 200, st)
+
+# Befund X: Supervisor-Version über die Schnittstelle lesen (Antwort nachgestellt)
+from unittest import mock
+del os.environ["FINANZAPP_SUPERVISOR_VERSION"]
+schutz._SUPERVISOR.update(version=None, geprueft=0.0)
+pruef("X1 Ohne SUPERVISOR_TOKEN: Version unbekannt, Header nicht vertrauenswürdig",
+      schutz.supervisor_version() is None and not schutz.gruppen_vertrauenswuerdig())
+class Antwort(io.BytesIO):
+    def __enter__(self): return self
+    def __exit__(self, *a): pass
+gesehen = []
+def abfrage(anfrage, timeout):
+    gesehen.append((anfrage.full_url, anfrage.get_header("Authorization")))
+    return Antwort(json.dumps({"result": "ok", "data": {"version": "2026.11.0"}}).encode())
+os.environ["SUPERVISOR_TOKEN"] = "testtoken"
+schutz._SUPERVISOR.update(version=None, geprueft=0.0)
+with mock.patch("urllib.request.urlopen", abfrage):
+    v = schutz.supervisor_version()
+pruef("X2 Version über GET http://supervisor/supervisor/info mit Token gelesen, 2026.11.0 gilt als vertrauenswürdig",
+      v == "2026.11.0" and gesehen == [("http://supervisor/supervisor/info", "Bearer testtoken")] and schutz.gruppen_vertrauenswuerdig(), gesehen)
+schutz._SUPERVISOR.update(version=None, geprueft=0.0)
+with mock.patch("urllib.request.urlopen", lambda a, timeout: Antwort(json.dumps({"data": {"version": "2026.10.4"}}).encode())):
+    pruef("X3 Supervisor 2026.10.4: nicht vertrauenswürdig", not schutz.gruppen_vertrauenswuerdig())
+schutz._SUPERVISOR.update(version=None, geprueft=0.0)
+def kaputt(a, timeout): raise OSError("nicht erreichbar")
+with mock.patch("urllib.request.urlopen", kaputt):
+    pruef("X4 Supervisor nicht erreichbar: nicht vertrauenswürdig", not schutz.gruppen_vertrauenswuerdig())
+del os.environ["SUPERVISOR_TOKEN"]
 
 fehl = [n for n, o in ERG if not o]
 print(f"\n{len(ERG) - len(fehl)}/{len(ERG)} bestanden", fehl)

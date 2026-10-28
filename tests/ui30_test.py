@@ -37,7 +37,7 @@ SERVER = [None]
 
 def starten():
     env = {**os.environ, "FINANZAPP_DATENVERZEICHNIS": ordner, "FINANZAPP_PORT": str(PORT),
-           "FINANZAPP_HERKUNFT_PRUEFEN": "sperren"}
+           "FINANZAPP_HERKUNFT_PRUEFEN": "sperren", "FINANZAPP_SUPERVISOR_VERSION": "2026.10.5"}
     SERVER[0] = subprocess.Popen([sys.executable, "run.py"], cwd=code, env=env,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(80):

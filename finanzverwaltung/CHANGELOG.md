@@ -4,10 +4,11 @@ Ausführlich zu jeder Version: DOCS.md, Abschnitte „Neu in Version …“.
 
 ## 3.0
 
-- Neu: Sperre mit PIN, Passwort oder Muster, Freigabeliste der Home-Assistant-Benutzer, Wartezeit nach Fehlversuchen, automatische Sperre. Wirkt im Server auf alle Endpunkte. Voraussetzung: Option `herkunft_pruefen` auf `sperren`, Supervisor ab 2026.10.5 für das Adminrecht.
+- Neu: Sperre mit PIN, Passwort oder Muster, Freigabeliste der Home-Assistant-Benutzer, Wartezeit nach Fehlversuchen, automatische Sperre. Wirkt im Server auf alle Endpunkte. Voraussetzung: Option `herkunft_pruefen` auf `sperren`.
 - Neu: Verschlüsselung der Datenbank und aller Backups mit SQLCipher, Passphrase nach jedem Neustart, Wiederherstellungsschlüssel zum Ausdrucken. Siri und Schnellbuchung merken Buchungen vor, solange die Datenbank zu ist, Klärliste für nicht Zuordenbares.
 - Neu: Verschlüsselter Datenbank-Download (.fvdb) und XLSX-Export mit Excel-Kennwort, Wiederherstellen und Import öffnen beides.
 - Beides ist nach dem Update aus. Ohne Schutz verhält sich das Programm wie 2.7.
+- Voraussetzung: Supervisor 2026.10.5 oder neuer, sonst lassen sich Sperre und Verschlüsselung nicht einschalten. Das Add-on liest dafür die Version des Supervisors (`hassio_api`, nur Leserechte, Befund X).
 - Tests: Testerwartungen vom Testtag gelöst (Befund V), Upgrade-Test in `alle_tests.py`.
 - Hinweis: Bei Sperre oder verschlossener Datenbank liefern die freiwilligen `rest`-Sensoren der Siri-Anleitung keine Daten (Befund W).
 

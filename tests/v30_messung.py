@@ -11,6 +11,7 @@ anzahl = int(sys.argv[4]) if len(sys.argv) > 4 else 20000
 shutil.rmtree(ziel, ignore_errors=True); shutil.copytree(quelle, ziel)
 os.environ["FINANZAPP_DATENVERZEICHNIS"] = ziel
 os.environ["FINANZAPP_HERKUNFT_PRUEFEN"] = "aus"
+os.environ["FINANZAPP_SUPERVISOR_VERSION"] = "2026.10.5"
 c = sqlite3.connect(os.path.join(ziel, "finanzdaten.db"))
 konten = [r[0] for r in c.execute("SELECT id FROM konten")]
 kats = [r[0] for r in c.execute("SELECT id FROM kategorien WHERE typ = 'ausgabe'")]
