@@ -392,6 +392,18 @@ def einschalten_vorbereiten(passphrase: str, wiederholung: str, laenge: int | No
     return {"kennung": kennung, "wiederherstellungsschluessel": wh_text}
 
 
+def vorbereitung_pruefen(kennung: str, getippt: str) -> None:
+    """Prüft Vorbereitung und abgetippten Schlüssel, ohne etwas zu ändern
+    (vor der Bestätigungsphrase, damit ein Tippfehler die Phrase nicht
+    verbraucht)."""
+    v = _VORBEREITET.get(kennung or "")
+    if not v or v["bis"] < schutzdatei.uhr():
+        _VORBEREITET.pop(kennung or "", None)
+        raise TresorFehler("Die Vorbereitung ist abgelaufen. Bitte neu beginnen.")
+    if wiederherstellungsschluessel_lesen(getippt) != v["wh_roh"]:
+        raise TresorFehler("Der abgetippte Wiederherstellungsschlüssel stimmt nicht.")
+
+
 def einschalten_ausfuehren(kennung: str, getippt: str, backup_erstellen) -> list[str]:
     """Schritt 2 (Entscheidung 44): Backup, verschlüsselte Kopien von
     Datenbank und Backups, jede geprüft mit Passphrase UND

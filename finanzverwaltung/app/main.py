@@ -155,7 +155,7 @@ class SchutzMiddleware:
             return await self._antwort(scope, receive, send, 503, "Die Verschlüsselung wird gerade umgestellt. "
                                        "Bitte kurz warten.", "umstellung")
         b = schutz.benutzer(kopf)
-        if b["id"]:
+        if b["id"] and sperre:   # nur bei Sperre, ohne Schutz legt 3.0 keine Dateien an
             schutz.bekannt_merken(b)
         if pfad == self.SIRI:
             herkunft = (scope.get("client") or ("?", 0))[0]
@@ -1365,6 +1365,18 @@ def api_import_vorlage():
         conn.close()
 
 
+@app.post("/api/admin/klartext-phrase")
+def api_klartext_phrase(art: str):
+    """Bestätigungsphrase für einen unverschlüsselten Download bei
+    eingeschalteter Verschlüsselung (art = datenbank oder export)."""
+    if art not in ("datenbank", "export"):
+        raise HTTPException(422, "Unbekannte Art.")
+    if not tresor.aktiv():
+        raise HTTPException(409, "Die Verschlüsselung ist aus. Bitte den normalen Download verwenden.")
+    token, phrase = zuruecksetzen.phrase_ausstellen({"klartext": art})
+    return {"token": token, "phrase": phrase}
+
+
 class DownloadIn(BaseModel):
     art: str
     von: Optional[str] = None
@@ -2509,9 +2521,9 @@ def api_schutz_status(request: Request):
     """Für Sperrbildschirm und Schnellbuchung, ohne Anmeldung lesbar. Nennt
     nur, was zum Entsperren nötig ist."""
     b = _benutzer(request)
-    if b["id"]:
-        schutz.bekannt_merken(b)
     s = schutz.einstellungen()
+    if b["id"] and s:
+        schutz.bekannt_merken(b)
     sperre = {"aktiv": bool(s)}
     if s:
         frei = schutz.freigegeben(b["id"], s)
@@ -2846,6 +2858,7 @@ def api_verschluesselung_vorbereiten(request: Request, payload: Verschluesselung
 def api_verschluesselung_einschalten(request: Request, payload: EinschaltenIn):
     _verwalter(request)
     try:
+        tresor.vorbereitung_pruefen(payload.kennung, payload.getippt)
         zuruecksetzen.phrase_pruefen(payload.token, payload.phrase, {"verschluesselung": "ein", "kennung": payload.kennung})
         return {"schritte": tresor.einschalten_ausfuehren(payload.kennung, payload.getippt, _backup_mit_beschreibung)}
     except (tresor.TresorFehler, zuruecksetzen.ZuruecksetzenFehler) as e:

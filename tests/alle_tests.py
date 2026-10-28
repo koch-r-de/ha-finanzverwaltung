@@ -38,6 +38,7 @@ FACHLICH = [
     ("v262", "v262_test.py", "v21", []),
     ("v263", "v263_test.py", "v21", []),
     ("v27", "v27_test.py", "v21", []),
+    ("v30", "v30_test.py", "v21", ["VORVERSION"]),
 ]
 OBERFLAECHE = [
     ("ui", "ui_test.py", "v191", []),
@@ -48,7 +49,17 @@ OBERFLAECHE = [
     ("ui26", "ui26_test.py", "v191", []),
     ("ui263", "ui263_test.py", "v191", []),
     ("ui27", "ui27_test.py", "v191", []),
+    ("ui30", "ui30_test.py", "v191", []),
 ]
+
+# Update von der Vorversion (seit 3.0 in dieser Liste): Code der Vorversion aus
+# dem Commit VORVERSION, Datenbank daten/v21. Fehlt der Commit im Klon (flacher
+# Klon), wird die Reihe übersprungen und so gemeldet.
+VORVERSION = ("2.7", "5e7b84c")
+
+# Reihen, die Server und Datenbank selbst steuern (Neustarts mit
+# Verschlüsselung): alle_tests startet für sie keinen Server.
+SELBST_GESTARTET = {"ui30"}
 
 # Reihen, die die Bundesland-Abfrage selbst prüfen
 OHNE_VORBELEGUNG = {"ui26"}
@@ -91,16 +102,44 @@ def server_starten(datenordner: Path) -> subprocess.Popen:
     raise RuntimeError("Server startet nicht.")
 
 
+def vorversion_bereitstellen() -> Path | None:
+    """Code der Vorversion per git archive nach tests/ausgabe/vorversion."""
+    ziel = AUSGABE / "vorversion"
+    if (ziel / "finanzverwaltung" / "run.py").exists():
+        return ziel / "finanzverwaltung"
+    ziel.mkdir(parents=True, exist_ok=True)
+    archiv = subprocess.run(["git", "-C", str(WURZEL), "archive", VORVERSION[1], "finanzverwaltung"],
+                            capture_output=True)
+    if archiv.returncode:
+        return None
+    subprocess.run(["tar", "-x", "-C", str(ziel)], input=archiv.stdout, check=True)
+    return ziel / "finanzverwaltung"
+
+
 def main() -> int:
     mit_ui = "--ohne-ui" not in sys.argv
     shutil.rmtree(AUSGABE, ignore_errors=True)
     AUSGABE.mkdir()
     ergebnisse = []
+    vorversion = vorversion_bereitstellen()
     for reihe, skript, quelle, extra in FACHLICH:
+        extra = [str(vorversion) if x == "VORVERSION" else x for x in extra]
+        if "None" in extra:
+            ergebnisse.append((reihe, "übersprungen (Vorversion nicht im Klon) []"))
+            print(f"{reihe:10} {ergebnisse[-1][1]}", flush=True)
+            continue
         lauf = subprocess.run([sys.executable, str(TESTS / skript), str(CODE), str(quelle_pfad(quelle)),
                                str(AUSGABE / reihe), *extra], capture_output=True, text=True, timeout=900)
         ergebnisse.append((reihe, protokoll(reihe, lauf)))
         print(f"{reihe:10} {ergebnisse[-1][1]}", flush=True)
+    if vorversion is None:
+        ergebnisse.append(("upgrade", "übersprungen (Vorversion nicht im Klon) []"))
+    else:
+        lauf = subprocess.run([sys.executable, str(TESTS / "upgrade_test.py"), str(CODE), str(DATEN / "v21"),
+                               str(AUSGABE / "upgrade"), str(vorversion)], capture_output=True, text=True, timeout=900,
+                              cwd=WURZEL)
+        ergebnisse.append(("upgrade", protokoll("upgrade", lauf)))
+    print(f"{'upgrade':10} {ergebnisse[-1][1]}", flush=True)
     if mit_ui:
         subprocess.run([sys.executable, str(TESTS / "ui_vorbereiten.py"), str(CODE), str(DATEN / "v191"),
                         str(AUSGABE / "uibasis")], capture_output=True, check=True, timeout=300)
@@ -109,6 +148,12 @@ def main() -> int:
             shutil.copytree(quelle_pfad(quelle), ordner)
             if reihe not in OHNE_VORBELEGUNG:
                 bundesland_vorbelegen(ordner)
+            if reihe in SELBST_GESTARTET:
+                lauf = subprocess.run([sys.executable, str(TESTS / skript), str(CODE), str(ordner), *extra],
+                                      capture_output=True, text=True, timeout=1800)
+                ergebnisse.append((reihe, protokoll(reihe, lauf)))
+                print(f"{reihe:10} {ergebnisse[-1][1]}", flush=True)
+                continue
             server = server_starten(ordner)
             try:
                 lauf = subprocess.run([sys.executable, str(TESTS / skript), *extra],

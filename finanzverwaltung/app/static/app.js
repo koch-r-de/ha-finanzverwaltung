@@ -4144,7 +4144,7 @@ async function sperreRendern() {
     <div><label>Schnellbuchung</label><select name="schnellbuchung">
       <option value="nur_erfassen" ${e.schnellbuchung === "nur_erfassen" ? "selected" : ""}>ohne Code nur erfassen</option>
       <option value="mit_code" ${e.schnellbuchung === "mit_code" ? "selected" : ""}>immer mit Code</option></select></div>
-    <div class="breit"><label><input type="checkbox" name="auto_hintergrund" ${e.auto_hintergrund ? "checked" : ""}>
+    <div class="breit"><label class="schutz-haken"><input type="checkbox" name="auto_hintergrund" ${e.auto_hintergrund ? "checked" : ""}>
       Auch sperren, wenn die App in den Hintergrund geht oder der Tab verlassen wird</label></div>
     <div><label>Mindestlänge PIN</label><input type="number" name="min_pin" min="6" max="64" value="${e.mindest.pin}"></div>
     <div><label>Mindestlänge Passwort</label><input type="number" name="min_passwort" min="8" max="64" value="${e.mindest.passwort}"></div>

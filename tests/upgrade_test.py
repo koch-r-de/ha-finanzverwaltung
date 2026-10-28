@@ -17,6 +17,12 @@ Geprüft wird:
 - 2.6: Tabelle feiertage entfernt, NRW als Vorschlag, Umstellungstag gemerkt,
   keine doppelten Termine für Termine, die die Vorversion nach NRW vorgezogen
   gebucht hat (Übergang), danach Bundesland wählbar und Hinweise nutzbar
+- 3.0 (Vorversion ab 2.6.1, zum Beispiel 2.7): neue Tabellen leer, kein Schutz
+  eingeschaltet, keine Schutzdateien angelegt. Danach auf den hochgezogenen
+  echten Daten Verschlüsselung und Sperre ein- und wieder ausschalten, mit
+  Neustart dazwischen: Inhalt aller Tabellen gleich, Salden gleich.
+Die Prüfungen von 2.6 und 2.6.1 laufen nur, wenn die Vorversion älter ist
+(Versionsstand aus der zweiten Zeile ihrer hilfe.md).
 """
 import json, os, shutil, sqlite3, subprocess, sys
 
@@ -59,6 +65,21 @@ def lauf(code, ordner, zeit, skript):
 
 
 code_neu, quelle, ziel, code_alt = sys.argv[1:5]
+
+
+def version_von(code):
+    try:
+        with open(os.path.join(code, "app", "hilfe", "hilfe.md"), encoding="utf-8") as f:
+            zeile = f.read().splitlines()[1]
+        return tuple(int(x) for x in zeile.split(":")[1].strip().split("."))
+    except (OSError, IndexError, ValueError):
+        return (0,)
+
+
+VORVERSION = version_von(code_alt)
+VOR_26 = VORVERSION < (2, 6)
+VOR_261 = VORVERSION < (2, 6, 1)
+print("Vorversion:", ".".join(map(str, VORVERSION)), "neu:", ".".join(map(str, version_von(code_neu))))
 zeit_alt = os.environ.get("UPGRADE_ZEIT_ALT", "")
 zeit_neu = os.environ.get("UPGRADE_ZEIT_NEU", "")
 shutil.rmtree(ziel, ignore_errors=True); shutil.copytree(quelle, ziel)
@@ -88,12 +109,17 @@ ERG["neu"] = [st["anzahl_neue_ist_buchungen_wiederkehrend"], st["anzahl_neue_ist
               st["anzahl_neue_ist_buchungen_altersvorsorge"]]
 ERG["regionen"] = c.get("/api/feiertage/regionen").json()
 ERG["salden"] = {k["name"]: k["saldo"] for k in c.get("/api/konten").json()}
+s = c.get("/api/schutz/status")
+ERG["schutz"] = s.json() if s.status_code == 200 else None
 """)
 print("Migration:", neu["migration"])
 print("Neue Buchungen (Vorlagen, Darlehen, Altersvorsorge):", neu["neu"])
 nachher = schnappschuss(DB)
 
-pruef("Start mit dem neuen Code, Migrationsschritte im Start-Status", neu["migration"], neu)
+if VOR_261:
+    pruef("Start mit dem neuen Code, Migrationsschritte im Start-Status", neu["migration"], neu)
+else:
+    pruef("Start mit dem neuen Code ohne Fehler", "migration" in neu and len(neu["neu"]) == 3, neu)
 abweichend, entfernt = [], []
 for t, (spalten, zeilen) in vorher.items():
     if t not in nachher:
@@ -126,18 +152,20 @@ e_vorher = {r[1]: r[2] for r in vorher["einstellungen"][1]}
 e_nachher = {r[1]: r[2] for r in nachher["einstellungen"][1]}
 pruef("Einstellungen: alle bisherigen Werte unverändert",
       all(e_nachher.get(k) == v for k, v in e_vorher.items()), {k: (v, e_nachher.get(k)) for k, v in e_vorher.items() if e_nachher.get(k) != v})
-pruef("Einstellungen 2.6: Bundesland leer, Vorschlag NRW",
-      e_nachher.get("bundesland") == "" and e_nachher.get("bundesland_vorschlag") == "NW",
-      {k: e_nachher.get(k) for k in ("bundesland", "bundesland_vorschlag")})
-pruef("Regionen-Endpunkt: nichts gewählt, Vorschlag NRW", neu["regionen"]["gewaehlt"] == "" and neu["regionen"]["vorschlag"] == "NW")
+if VOR_26:
+    pruef("Einstellungen 2.6: Bundesland leer, Vorschlag NRW",
+          e_nachher.get("bundesland") == "" and e_nachher.get("bundesland_vorschlag") == "NW",
+          {k: e_nachher.get(k) for k in ("bundesland", "bundesland_vorschlag")})
+    pruef("Regionen-Endpunkt: nichts gewählt, Vorschlag NRW", neu["regionen"]["gewaehlt"] == "" and neu["regionen"]["vorschlag"] == "NW")
 
 c = sqlite3.connect(DB)
 falsch = c.execute("SELECT COUNT(*) FROM buchungen WHERE typ <> 'Uebertragung' AND zielkonto_id IS NOT NULL").fetchone()[0]
 pruef("Befund P: kein Zielkonto mehr bei Ist- und Plan-Buchungen, echte Übertragung behält es",
       falsch == 0 and c.execute("SELECT zielkonto_id FROM buchungen WHERE id = ?", (alt["uebertragung"],)).fetchone()[0]
       and c.execute("SELECT zielkonto_id FROM buchungen WHERE id = ?", (alt["befund_p"],)).fetchone()[0] is None)
-pruef("Befund P: Backup vor der Korrektur, Schritt im Start-Status",
-      any("Zielkonto bei" in m for m in neu["migration"]) and any("Korrektur des Zielkontos" in m for m in neu["migration"]))
+if VOR_261:
+    pruef("Befund P: Backup vor der Korrektur, Schritt im Start-Status",
+          any("Zielkonto bei" in m for m in neu["migration"]) and any("Korrektur des Zielkontos" in m for m in neu["migration"]))
 c.close()
 
 # Übergang: kein Termin doppelt (gleiche Quelle, gleiche Kategorie, Abstand unter 5 Tagen)
@@ -173,6 +201,46 @@ pruef("Danach: Bundesland wählbar, Liste 2027 mit 11 NRW-Feiertagen",
       zweit["setzen"] == 200 and len([t for t in zweit["liste"]["tage"] if t["feiertag"]]) == 11)
 pruef("Danach: Siri meldet Allerheiligen", zweit["siri"].get("feiertagshinweis") == "01.11.2027 ist ein Feiertag (Allerheiligen).",
       zweit["siri"])
+
+# 4. Seit 3.0: Schutz bleibt nach dem Update aus, Einschalten auf den echten Daten
+if not VOR_261 and neu.get("schutz") is not None:
+    c = sqlite3.connect(DB)
+    tabellen = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    leer = all(c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] == 0 for t in ("klaerliste", "stapel_erledigt"))
+    c.close()
+    pruef("3.0: Tabellen klaerliste und stapel_erledigt angelegt und leer", {"klaerliste", "stapel_erledigt"} <= tabellen and leer)
+    pruef("3.0: Sperre und Verschlüsselung nach dem Update aus",
+          not neu["schutz"]["sperre"]["aktiv"] and not neu["schutz"]["verschluesselung"]["aktiv"], neu["schutz"])
+    pruef("3.0: keine Schutzdateien angelegt (schutz.json, auszug.json, stapel)",
+          not any(os.path.exists(os.path.join(ziel, n)) for n in ("schutz.json", "auszug.json", "stapel")))
+    vor_schutz = schnappschuss(DB)
+    with open(DB, "rb") as f:
+        klar = f.read(16) == b"SQLite format 3\x00"
+    a = lauf(code_neu, ziel, zeit_neu, """
+import os
+os.environ["FINANZAPP_HERKUNFT_PRUEFEN"] = "aus"
+A = {"X-Remote-User-Id": "upgrade-admin", "X-Remote-User-Name": "admin", "X-Remote-User-Groups": "system-admin"}
+c.get("/api/admin/datenbank-herunterladen")
+v = c.post("/api/schutz/verschluesselung/vorbereiten", headers=A, json={"passphrase": "Upgrade Passphrase 2027!", "wiederholung": "Upgrade Passphrase 2027!"}).json()
+ERG["ein"] = c.post("/api/schutz/verschluesselung/einschalten", headers=A, json={"kennung": v["kennung"], "getippt": v["wiederherstellungsschluessel"], "token": v["token"], "phrase": v["phrase"]}).json()
+""")
+    with open(DB, "rb") as f:
+        verschluesselt = f.read(16) != b"SQLite format 3\x00"
+    pruef("3.0: Einschalten der Verschlüsselung auf den hochgezogenen Daten", klar and verschluesselt and "schritte" in a["ein"], a["ein"])
+    b = lauf(code_neu, ziel, zeit_neu, """
+A = {"X-Remote-User-Id": "upgrade-admin", "X-Remote-User-Name": "admin", "X-Remote-User-Groups": "system-admin"}
+ERG["zu"] = c.get("/api/konten").status_code
+ERG["auf"] = c.post("/api/schutz/entsperren", json={"geheimnis": "Upgrade Passphrase 2027!"}).status_code
+ERG["salden"] = {k["name"]: k["saldo"] for k in c.get("/api/konten").json()}
+p = c.post("/api/schutz/verschluesselung/ausschalten-phrase", headers=A).json()
+ERG["aus"] = c.post("/api/schutz/verschluesselung/ausschalten", headers=A, json={"geheimnis": "Upgrade Passphrase 2027!", "token": p["token"], "phrase": p["phrase"]}).json()
+""")
+    pruef("3.0: nach Neustart zu, mit Passphrase offen, Salden wie vorher",
+          b["zu"] == 423 and b["auf"] == 200 and b["salden"] == neu["salden"], (b["zu"], b["auf"], b["salden"], neu["salden"]))
+    nach_schutz = schnappschuss(DB)
+    gleich = all(nach_schutz.get(t) == w for t, w in vor_schutz.items() if t not in ("backups_log",))
+    pruef("3.0: nach Aus- und Einschalten alle Tabellen inhaltlich gleich (außer Backup-Liste)", gleich and "schritte" in b["aus"],
+          [t for t, w in vor_schutz.items() if nach_schutz.get(t) != w])
 
 fehl = [n for n, o in ERG if not o]
 print(f"\n{len(ERG) - len(fehl)}/{len(ERG)} bestanden", fehl)

@@ -621,3 +621,6 @@ html.schutz-zu .seitenleiste, html.schutz-zu .hauptbereich, html.schutz-zu .sb-h
 .schutz-status.an { color: var(--gruen); border-color: #2f7d4f66; background: #2f7d4f12; }
 .schutz-formular { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; align-items: end; }
 .schutz-formular .breit { grid-column: 1 / -1; }
+.schutz-formular .breit > input, .schutz-formular .breit > select { max-width: 420px; }
+.schutz-haken { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--tinte); }
+.schutz-haken input { width: auto; margin: 0; }
