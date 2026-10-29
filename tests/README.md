@@ -13,14 +13,14 @@ PDF-Handbuchs, `playwright` die Oberflächentests.
 Die Integration in `custom_components/` (seit 2.7) läuft nur mit Home
 Assistant. `v27_test.py` braucht dafür eine eigene Umgebung unter
 `tests/.ha-venv` (oder den Pfad eines Python-Interpreters in
-`FINANZAPP_HA_PYTHON`). Home Assistant 2026.x verlangt Python 3.13 oder neuer:
+`FINANZAPP_HA_PYTHON`). HA Core 2026.x verlangt Python 3.13 oder neuer:
 
 ```
 python3 -m venv tests/.ha-venv
 tests/.ha-venv/bin/pip install pytest-homeassistant-custom-component==0.13.316 home-assistant-frontend==20260128.6
 ```
 
-Das Paket bringt Home Assistant 2026.2.3 mit. Die Version des Frontends muss zu
+Das Paket bringt HA Core 2026.2.3 mit. Die Version des Frontends muss zu
 der in `homeassistant/components/frontend/manifest.json` der installierten
 Version passen. Fehlt die Umgebung, meldet die Reihe „0/1 bestanden“.
 
@@ -67,6 +67,10 @@ Einzeln aufrufen: `python3 tests/v24_test.py finanzverwaltung <quelle> <ziel> [w
 Befund V (3.0): `funktion_test.py` prüft die Salden nach der Umbuchungsvorlage
 als Änderung gegenüber vorher, `v2_test.py` legt für den Rest des laufenden
 Monats eine eigene Einnahme an. Vorher hingen beide am Testtag (Gehalt am 28.).
+
+Befund Y (3.0): `v2_test.py` fragt den Cashflow ab dem Monatsersten ab, so wie
+es die gebuchten Einnahmen und die Jahresübersicht zählen. Vorher ab heute,
+damit fehlte vom 29. bis Monatsende das schon gebuchte Gehalt.
 
 ## Testdatenbanken
 

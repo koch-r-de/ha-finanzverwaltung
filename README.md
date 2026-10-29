@@ -12,8 +12,9 @@ Feiertage werden für das beim ersten Start gewählte Bundesland markiert,
 fällige Termine verschieben sich nach dem Bankenkalender (TARGET).
 Auf Wunsch schützt eine Sperre mit PIN, Passwort oder Muster den Zugang, und
 die Datenbank samt Backups lässt sich mit einer Passphrase verschlüsseln
-(SQLCipher). Beides ist ausgeschaltet, bis man es einschaltet, und braucht den
-Supervisor ab 2026.10.5.
+(SQLCipher). Beides ist ausgeschaltet, bis man es einschaltet, und braucht
+HA Supervisor 2026.10.5 oder neuer (die Version des HA Supervisors, nicht die
+von HA Core).
 
 ## Bilder
 
@@ -43,6 +44,14 @@ wird aus der Beschreibung vorgeschlagen.
    „Finanzen“ in der Seitenleiste.
 
 Unterstützt: amd64 und aarch64 (z. B. Raspberry Pi 4/5 mit 64-Bit-HAOS).
+
+**Voraussetzung: Home Assistant OS.** Als Add-on braucht die Finanzverwaltung
+den HA Supervisor. Mit den Installationsarten Container und Core gibt es keine
+Add-ons. Supervised hat den HA Supervisor, wird von Home Assistant aber seit
+HA Core 2025.12 nicht mehr unterstützt und ist hier nicht getestet. Welche
+Versionsnummer zu welchem Teil (HA Core, HA Supervisor, HA OS) gehört, steht
+in [`finanzverwaltung/DOCS.md`](finanzverwaltung/DOCS.md), Abschnitt
+„Installation“.
 
 Optional bekommt die Schnellbuchung einen eigenen Eintrag in der Seitenleiste.
 Dafür dieses Repository zusätzlich in HACS als Integration hinzufügen, siehe

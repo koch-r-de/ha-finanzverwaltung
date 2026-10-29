@@ -3,7 +3,7 @@ Code-Sperre (seit 3.0, Issue #5).
 
 Wer die Oberfläche öffnet, sagt der Supervisor über die Ingress-Header
 X-Remote-User-Id, X-Remote-User-Name, X-Remote-User-Display-Name und (ab
-Supervisor 2026.10.5, Commit 3fbb083b) X-Remote-User-Groups. Ein Client kann
+HA Supervisor 2026.10.5, Commit 3fbb083b) X-Remote-User-Groups. Ein Client kann
 diese Header nicht unterschieben, der Supervisor ersetzt sie
 (supervisor/api/ingress.py, _init_header). Das gilt nur für Aufrufe über
 Ingress. Deshalb lässt sich die Sperre nur einschalten, wenn die
@@ -424,8 +424,8 @@ def verwalter_pruefen(b: dict, token: str | None) -> None:
             text = "Nur Administratoren von Home Assistant dürfen den Schutz ändern."
         else:
             gefunden = supervisor_version()
-            text = ("Das Adminrecht ist nicht sicher erkennbar. Dafür ist Supervisor 2026.10.5 oder neuer nötig"
-                    + (f" (gefunden: {gefunden})." if gefunden else "."))
+            text = ("Das Adminrecht ist nicht sicher erkennbar. Dafür ist HA Supervisor 2026.10.5 oder neuer nötig, nicht HA Core"
+                    + (f" (gefunden: HA Supervisor {gefunden})." if gefunden else "."))
         raise SperreFehler(text, 403)
     if aktiv() and not (freigegeben(b["id"]) and sitzung_gueltig(token, b["id"])):
         raise SperreFehler("Nur freigegebene Benutzer mit gültiger Anmeldung dürfen den Schutz ändern.", 403)

@@ -13,8 +13,12 @@ bleibt unberührt.
 
 ### Voraussetzungen
 
-- Home Assistant OS oder Supervised (die Schnellbuchung bettet das Add-on
-  über Ingress ein)
+- Home Assistant OS (die Schnellbuchung bettet das Add-on über Ingress ein,
+  dafür braucht es den HA Supervisor). Supervised hat ihn ebenfalls, wird von
+  Home Assistant aber seit HA Core 2025.12 nicht mehr unterstützt. Container
+  und Core haben keine Add-ons.
+- HA Core 2025.1 oder neuer (Mindestangabe in `hacs.json`, getestet mit
+  HA Core 2026.2.3)
 - das Add-on „Private Finanzverwaltung“, installiert und gestartet
 - HACS (Gemeinschaftsprojekt, nicht Teil von Home Assistant, siehe
   [hacs.xyz](https://hacs.xyz))

@@ -70,7 +70,9 @@ with TestClient(app) as c:
     anst = [b for b in ok(c.get(f"/api/buchungen?inkl_anstehende=true&bis={monatsende.isoformat()}")) if b.get("virtuell")]
     anst_ein = round(sum(b["betrag"] for b in anst if b["betrag"] > 0 and b["typ"] != "Uebertragung"), 2)
     anst_aus = round(sum(-b["betrag"] for b in anst if b["betrag"] < 0 and b["typ"] != "Uebertragung"), 2)
-    cf = ok(c.get(f"/api/auswertungen/cashflow?von={HEUTE.isoformat()}&bis={(HEUTE + relativedelta(months=3)).isoformat()}"))
+    # Befund Y (3.0): ab dem Monatsersten, wie die gebuchten Einnahmen unten und
+    # die Jahresübersicht. Ab heute fehlte nach dem 28. das schon gebuchte Gehalt.
+    cf = ok(c.get(f"/api/auswertungen/cashflow?von={lfd}-01&bis={(HEUTE + relativedelta(months=3)).isoformat()}"))
     i = cf["monate"].index(lfd)
     pruef("P1: Cashflow liefert anstehenden Anteil des laufenden Monats",
           cf["einnahmen_anstehend"][i] == anst_ein and cf["ausgaben_anstehend"][i] == anst_aus and (anst_ein > 0 or test_einnahme is None),

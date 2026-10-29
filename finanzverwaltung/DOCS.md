@@ -11,6 +11,28 @@ Danach erscheint „Private Finanzverwaltung“ im App-Store. Installieren,
 starten, fertig. Unterstützt werden amd64 und aarch64 (z. B. Raspberry Pi
 4/5 mit 64-Bit-Home-Assistant-OS).
 
+**Voraussetzung: Home Assistant OS.** Die Finanzverwaltung ist ein Add-on.
+Add-ons verwaltet der HA Supervisor, und den gibt es nur bei Home Assistant OS
+und bei der Installationsart Supervised. Mit den Installationsarten Container
+und Core gibt es keinen Add-on-Store, das Add-on lässt sich dort nicht
+installieren. Supervised und Core unterstützt Home Assistant seit HA Core
+2025.12 nicht mehr (Ankündigung im Blog von Home Assistant vom 22.05.2025).
+Supervised funktioniert technisch wie Home Assistant OS, ist aber nicht
+getestet.
+
+Home Assistant besteht aus mehreren Teilen mit eigenen Versionsnummern, die
+sich ähnlich sehen. Diese Dokumentation nennt deshalb immer den Teil:
+- **HA Core**: das eigentliche Home Assistant mit Oberfläche, Integrationen
+  und Automationen (zum Beispiel 2026.7.4),
+- **HA Supervisor**: verwaltet Add-ons, Ingress und Backups (zum Beispiel
+  2026.10.5),
+- **HA OS**: das Betriebssystem (Home Assistant OS, eigene Zählung).
+
+Die Versionen stehen in Home Assistant unter Einstellungen → Info, jeweils mit
+Namen (Beschriftung nicht am System geprüft). Sperre und Verschlüsselung (seit
+3.0) brauchen **HA Supervisor 2026.10.5** oder neuer, alles andere läuft auch
+mit älteren Ständen.
+
 Privates Projekt, kein Support, keine Gewähr. Fehlermeldungen und
 Vorschläge gern als Issue auf GitHub, eine Antwort ist nicht zugesagt.
 
@@ -168,14 +190,16 @@ Datenbank entsperrt ist.
 Sperre zusätzlich nur freigegebene mit gültiger Anmeldung. Das Adminrecht
 kommt aus dem Header `X-Remote-User-Groups` mit der Gruppe `system-admin`
 (`HOMEASSISTANT_GROUP_ID_ADMIN` in `supervisor/const.py`). Den Header setzt
-der Supervisor erst seit Commit 3fbb083b vom 21.10.2026 (PR #7398), enthalten
-ab Tag 2026.10.5. Ob diese Version schon im stabilen Kanal ist, war beim Bau
-nicht sicher. Der Header fehlt auch, wenn der Supervisor die Gruppen nicht
+der HA Supervisor erst seit Commit 3fbb083b vom 21.10.2026 (PR #7398),
+enthalten ab dem Tag 2026.10.5 des HA Supervisors (Commit vom 28.10.2026). Ob
+diese Version schon im stabilen Kanal ist, war beim Bau nicht sicher, die
+Release-Seite des HA Supervisors nannte am 29.10.2026 noch 2026.09.3 als
+neueste Version. Der Header fehlt auch, wenn der Supervisor die Gruppen nicht
 kennt (Sitzung angelegt, während Core nicht erreichbar war). Fehlt er, gilt
 der Benutzer nicht als Admin, die Einstellungen sind nur lesbar und nennen den
 Grund. Eine Abfrage bei Core als Ersatz wurde verworfen, weil das Add-on dafür
 Adminrechte bei Core bräuchte, genau das, was PR #7398 vermeiden will.
-Gewertet wird der Header nur, wenn der Supervisor 2026.10.5 oder neuer ist
+Gewertet wird der Header nur bei HA Supervisor 2026.10.5 oder neuer
 (Befund X unten). Die
 Benutzerkennung kommt aus `X-Remote-User-Id`, `X-Remote-User-Name` und
 `X-Remote-User-Display-Name`. Der Supervisor ersetzt diese Header immer, ein
@@ -312,15 +336,16 @@ nicht (gleicher Code bestand am Vortag). Behebung freigegeben: `funktion`
 prüft die Saldoänderung durch die Umbuchungsvorlage, `v2` legt für den Rest
 des Monats eine eigene Einnahme am letzten Bankarbeitstag an.
 
-**Wichtig: Sperre und Verschlüsselung brauchen Supervisor 2026.10.5 oder
-neuer.** Nur damit erkennt die Finanzverwaltung Administratoren sicher. Mit
-einem älteren Supervisor oder wenn er seine Version nicht nennt, gilt niemand
-als Administrator. Dann lassen sich Sperre und Verschlüsselung weder
+**Wichtig: Sperre und Verschlüsselung brauchen HA Supervisor 2026.10.5 oder
+neuer.** Gemeint ist die Version des HA Supervisors, nicht die von HA Core.
+Nur damit erkennt die Finanzverwaltung Administratoren sicher. Mit einem
+älteren HA Supervisor oder wenn er seine Version nicht nennt, gilt niemand als
+Administrator. Dann lassen sich Sperre und Verschlüsselung weder
 einschalten noch ändern. Bereits eingeschalteter Schutz wirkt weiter, nur die
 Verwaltung ist dann gesperrt. Die gefundene Version steht beim Start im
 Protokoll („Supervisor-Version …“) und im Hinweis der Administration. Die
-eigene Version zeigt Home Assistant unter Einstellungen, System, Reparaturen,
-Menü „Systeminformationen“, Abschnitt „Supervisor“ (Pfad ungeprüft).
+eigene Version zeigt Home Assistant unter Einstellungen → Info in der Zeile
+„Supervisor“ (Beschriftung nicht am System geprüft).
 
 **Befund X (gefunden bei der Abschlussprüfung im Quelltext des Supervisors,
 betraf nur den Bau von 3.0 vor der Veröffentlichung):** Der Supervisor ersetzt
@@ -332,9 +357,9 @@ durch. Jeder Home-Assistant-Benutzer hätte sich damit Adminrecht geben und
 zum Beispiel die Verschlüsselung mit eigener Passphrase einschalten können.
 Gegenprobe mit dem Bau vor der Behebung: gefälschter Header, Einschalten
 vorbereitet (200), danach abgewiesen (403). Behebung freigegeben: Das Add-on
-liest beim Start die Version des Supervisors (`hassio_api: true`,
+liest beim Start die Version des HA Supervisors (`hassio_api: true`,
 `GET http://supervisor/supervisor/info`) und wertet den Gruppen-Header nur ab
-2026.10.5. Die Rolle `default` erlaubt dabei nur Abfragen auf `…/info`
+HA Supervisor 2026.10.5. Die Rolle `default` erlaubt dabei nur Abfragen auf `…/info`
 (`role_access` in `supervisor/api/middleware/security.py`). Die
 Sicherheitsbewertung des Add-ons ändert sich dadurch nicht, sie sinkt nur bei
 den Rollen `manager` und `admin` (`rating_security` in
@@ -342,6 +367,14 @@ den Rollen `manager` und `admin` (`rating_security` in
 einmal je Minute wiederholt, bis dahin gilt niemand als Administrator. Die
 Middleware fragt die Version nie ab, damit keine Anfrage auf den Supervisor
 wartet.
+
+**Befund Y (gefunden beim Testlauf am 29.10.2026, nur Test, besteht seit
+2.0):** Zwei Prüfungen in `v2_test.py` schlugen am 29. fehl, mit dem Code von
+2.7 genauso. Der Test fragte den Cashflow ab heute ab, zählte die schon
+gebuchten Einnahmen aber ab dem Monatsersten, und die Jahresübersicht zählt
+den ganzen Monat. Vom Tag nach dem Gehalt der Testdaten (28.) bis zum
+Monatsende passte das nicht. Behebung freigegeben: Cashflow im Test ab dem
+Monatsersten.
 
 **Befund W (gefunden beim Bau, folgt aus Entscheidung 45, noch nicht
 entschieden):** Die freiwilligen `rest`-Sensoren der Siri-Anleitung („Finanz
@@ -375,9 +408,9 @@ Protokoll, alle 106 geschützten Endpunkte ohne Code abgewiesen, Wartezeiten
 zwischen Buchen und Löschen, Klärliste, Wiederherstellungsschlüssel, Ändern der
 Passphrase, Download in beiden Formen, XLSX mit Kennwort hin und zurück.
 Gegenprobe: Die Klartextprüfung findet in der Datenbank von 2.7 alle Proben.
-Zu Befund X: gefälschter Header bei Supervisor 2026.10.4 und unbekannter
+Zu Befund X: gefälschter Header bei HA Supervisor 2026.10.4 und unbekannter
 Version, Lesen der Version mit nachgestellter Antwort des Supervisors.
-Nicht geprüft: Docker-Bau, echte Ingress-Header eines Supervisors 2026.10.5,
+Nicht geprüft: Docker-Bau, echte Ingress-Header eines HA Supervisors 2026.10.5,
 Downloads in der Companion-App, Öffnen der Kennwort-XLSX in Excel.
 
 ## Neu in Version 2.7
@@ -453,7 +486,7 @@ verlängern, eine abgelaufene ersetzen. Zuerst mit den neueren Befehlen
 (eigener Pfad), deshalb merkt sich das Panel seine Sitzung selbst.
 
 Tests: `v27_test.py` (16 Prüfungen mit `pytest-homeassistant-custom-component`
-0.13.316, also Home Assistant 2026.2.3): Einrichtung mit Fehlerfällen, Panel
+0.13.316, also HA Core 2026.2.3): Einrichtung mit Fehlerfällen, Panel
 mit Adresse, Version und Kennung, Kennungswahl, Auslieferung der Datei,
 Hinweis auf den alten Eintrag auch beim Start, Entfernen und Neuladen,
 Pflichtdateien, gleiche Versionen in Add-on, Hilfe und Integration. Beim
@@ -461,11 +494,11 @@ Schreiben fiel dort auf, dass ein Startlistener nach dem Auslösen beim
 Entfernen einen Fehler warf, deshalb `async_at_started`. `ui27_test.py`
 (24 Prüfungen) bettet das Panel wie Home Assistant ein: Höhe und alle Felder
 wie seit 2.6.4, ohne Adminrecht, Sitzung mit Uhr-Attrappe, ältere
-Home-Assistant-Version. Gegenprobe mit dem Panel von 2.6.4: 16 von 24
+Version von HA Core. Gegenprobe mit dem Panel von 2.6.4: 16 von 24
 Prüfungen schlagen fehl. Das sind die zu Befund T und alle, die ohne Adminrecht
 laden (Befund S, darunter auch Höhe und Felder). Die angegebene
-Mindestversion 2025.1 in `hacs.json` ist aus den genutzten Schnittstellen
-abgeleitet, getestet ist nur 2026.2.3. Die deutschen Beschriftungen in HACS in
+Mindestversion HA Core 2025.1 in `hacs.json` ist aus den genutzten
+Schnittstellen abgeleitet, getestet ist nur HA Core 2026.2.3. Die deutschen Beschriftungen in HACS in
 der Anleitung sind nicht am System geprüft.
 
 **Befund U (gefunden beim Durchsehen der Texte für 2.7):** Zwei Texte waren
@@ -580,7 +613,7 @@ sichert Home Assistant (HTTPS bzw. Home Assistant Cloud), intern läuft HTTP
 im Docker-Netz desselben Geräts. Die Datenpartition von Home Assistant OS ist
 nach der Dokumentation des Partitionslayouts nicht verschlüsselt (keine
 Erwähnung, ungeprüft). Automatische Backups von Home Assistant sind seit
-2025.1 verschlüsselt und enthalten `/data` des Add-ons. Unverschlüsselt sind
+HA Core 2025.1 verschlüsselt und enthalten `/data` des Add-ons. Unverschlüsselt sind
 die add-on-eigenen Backups unter `/data/Backups` und „Datenbank
 herunterladen“. Eine Verschlüsselung der Datenbank selbst ginge mit SQLCipher
 (`sqlcipher3-wheels`, Wheels für musllinux aarch64), offen ist die

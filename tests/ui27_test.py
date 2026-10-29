@@ -3,7 +3,7 @@ custom_components/finanzverwaltung, eingebettet wie in Home Assistant.
 
 Die Seite baut den Behälter von Home Assistant nach (Eigenschaften panel und
 hass vor dem Einhängen) und ersetzt die WebSocket-Aufrufe durch eine Attrappe
-mit Adminrecht oder ohne, neuer oder alter Home-Assistant-Version. Geprüft:
+mit Adminrecht oder ohne, neuer oder alter Version von HA Core. Geprüft:
 volle Höhe und alle Felder (Issue #4), Kennung aus der Integration ohne
 Adminrecht (Befund S), Ingress-Sitzung mit Verlängerung, Neuanlage und
 Rückfall (Befund T), Fehlertexte.
@@ -166,7 +166,7 @@ with sync_playwright() as p:
 
     ctx = br.new_context(); page = ctx.new_page()
     page.goto(f"{ADRESSE}ohne_hoehe.html?admin=1&alt=1&{KENNUNG}"); page.wait_for_timeout(1500)
-    pruef("Ältere Home-Assistant-Version: Sitzung über supervisor/api, Schnellbuchung lädt",
+    pruef("Ältere Version von HA Core: Sitzung über supervisor/api, Schnellbuchung lädt",
           "supervisor/api /ingress/session" in aufrufe(page) and sitzungs_cookie(ctx) == [("s1", "/api/hassio_ingress/")]
           and iframe_hoehe(page) is not None, aufrufe(page))
     ctx.close()
