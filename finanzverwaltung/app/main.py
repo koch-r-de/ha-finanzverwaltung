@@ -375,24 +375,39 @@ def api_konto_loeschen(konto_id: int):
 class SaldoKorrekturIn(BaseModel):
     konto_id: int
     datum: Datum
-    saldo: float
+    saldo: float                         # tatsächlicher Kontostand am Ende des Stichtags
     kommentar: Optional[str] = None
+    anfangsbestand: bool = False         # seit 3.1: Kategorie „Anfangsbestand“
+    differenz: Optional[float] = None    # seit 3.1: in der Vorschau bestätigte Differenz
+
+
+@app.get("/api/saldo-korrekturen/vorschau")
+def api_saldo_korrektur_vorschau(konto_id: int, datum: Optional[str] = None, saldo: Optional[float] = None,
+                                 anfangsbestand: bool = False):
+    """Seit 3.1 (#12): Feld „Anfangsbestand“ (möglich, vorbelegt) und mit
+    Datum und Kontostand die Differenz, die gebucht würde."""
+    conn = verbindung()
+    try:
+        return buchungen.saldo_korrektur_vorschau(conn, konto_id=konto_id, datum=_parse_datum(datum),
+                                                  kontostand=saldo, anfangsbestand=anfangsbestand)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    finally:
+        conn.close()
 
 
 @app.post("/api/saldo-korrekturen")
 def api_saldo_korrektur(payload: SaldoKorrekturIn):
-    # Seit v2.0: keine Korrekturen in der Zukunft (Kontostand ist dann noch
-    # nicht festgestellt; die Saldo-Prognose könnte sie auch nicht sinnvoll
-    # verrechnen).
-    if payload.datum and payload.datum > zeit.heute().isoformat():
-        raise HTTPException(422, "Eine Saldo-Korrektur darf nicht in der Zukunft liegen.")
+    """Seit 3.1 (#12) eine Buchung mit der Differenz zum Saldo am Ende des
+    Stichtags, kein Fixpunkt mehr. Abgelehnt (422): Datum in der Zukunft (seit
+    2.0), Differenz 0, zweiter Anfangsbestand, geänderte Differenz."""
     conn = verbindung()
     try:
-        korrektur_id = buchungen.saldo_korrektur_anlegen(
-            conn, konto_id=payload.konto_id, datum=_parse_datum(payload.datum),
-            saldo=payload.saldo, kommentar=payload.kommentar,
-        )
-        return {"id": korrektur_id}
+        return buchungen.saldo_korrektur_buchen(
+            conn, konto_id=payload.konto_id, datum=_parse_datum(payload.datum), kontostand=payload.saldo,
+            anfangsbestand=payload.anfangsbestand, kommentar=payload.kommentar, differenz=payload.differenz)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     finally:
         conn.close()
 

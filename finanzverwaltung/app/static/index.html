@@ -74,11 +74,18 @@
       <p class="hinweis" data-hinweis="konten.saldo-korrektur"></p>
       <form class="formular" id="form-saldo-korrektur">
         <div><label>Konto</label><select name="konto_id" class="konto-auswahl" required></select></div>
+        <div id="sk-anfangsbestand-feld" hidden><label><input type="checkbox" name="anfangsbestand" style="width:auto"> Anfangsbestand</label></div>
         <div><label>Datum</label><input type="date" name="datum" required data-feiertag></div>
-        <div><label>Saldo (€)</label><input type="number" step="0.01" name="saldo" required></div>
+        <div><label>Kontostand (€)</label><input type="number" step="0.01" name="saldo" required></div>
         <div><label>Kommentar</label><input name="kommentar"></div>
-        <div><button class="knopf" type="submit">Korrektur anlegen</button></div>
+        <div><button class="knopf" type="submit">Differenz prüfen</button></div>
       </form>
+      <div id="sk-vorschau" hidden>
+        <p id="sk-vorschau-text"></p>
+        <button class="knopf" type="button" id="sk-buchen">Korrektur buchen</button>
+        <button class="knopf sekundaer" type="button" id="sk-abbrechen">Abbrechen</button>
+      </div>
+      <p class="hinweis" id="sk-meldung"></p>
     </div>
   </section>
 
@@ -964,6 +971,6 @@
 
 <script src="assets/vendor/chart.umd.min.js?v=5"></script>
 <script src="assets/schutz.js?v=1"></script>
-<script src="assets/app.js?v=24"></script>
+<script src="assets/app.js?v=25"></script>
 </body>
 </html>

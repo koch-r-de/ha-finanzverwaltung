@@ -771,13 +771,21 @@ class Buchungen(Bereich):
             raise ZeilenFehler(fehler)
         return typ
 
+    # Seit 3.1 (#12): Saldo-Korrekturen und Anfangsbestände per Datei nur löschen.
+    KORREKTUR_FEHLER = ("Saldo-Korrekturen und Anfangsbestände lassen sich per Datei nicht anlegen oder ändern, "
+                        "nur löschen (aktion = löschen). Neu anlegen: Konten → Saldo-Korrektur.")
+
     def anlegen(self, conn, ctx, w):
+        if w.get("kategorie") in bm.korrektur_kategorien(conn):
+            raise ZeilenFehler(self.KORREKTUR_FEHLER)
         typ = self._pruefen(conn, w)
         return bm.buchung_anlegen(conn, konto_id=w["konto"], datum=w["datum"], betrag=w["betrag"],
                                   kategorie_id=w.get("kategorie"), typ=typ, beschreibung=w.get("beschreibung"),
                                   zielkonto_id=w.get("zielkonto"), sparziel_id=w.get("sparziel"))
 
     def aendern(self, conn, ctx, id_, w, alt):
+        if alt["kategorie_id"] in bm.korrektur_kategorien(conn) or w.get("kategorie") in bm.korrektur_kategorien(conn):
+            raise ZeilenFehler(self.KORREKTUR_FEHLER)
         typ = self._pruefen(conn, w)
         bm.buchung_bearbeiten(conn, id_, konto_id=w["konto"], datum=w["datum"], betrag=w["betrag"],
                               kategorie_id=w.get("kategorie") or 0, typ=typ, beschreibung=w.get("beschreibung"),
@@ -785,6 +793,15 @@ class Buchungen(Bereich):
 
     def loeschen(self, conn, ctx, id_, alt):
         bm.buchung_loeschen(conn, id_)
+
+    def hinweise_vor_aenderung(self, conn, ctx, id_, werte, alt):
+        """Beim Löschen einer Saldo-Korrektur die Folge für den Saldo nennen."""
+        if werte is not None or alt is None or alt["kategorie_id"] not in bm.korrektur_kategorien(conn):
+            return []
+        konto = conn.execute("SELECT name FROM konten WHERE id = ?", (alt["konto_id"],)).fetchone()
+        tag = date.fromisoformat(alt["datum"]).strftime("%d.%m.%Y")
+        return [f"Saldo-Korrektur „{alt['beschreibung'] or ''}“ auf „{konto['name'] if konto else '?'}“ gelöscht: "
+                f"Der Saldo ändert sich ab dem {tag} um {bm.euro_de(-alt['betrag'])}."]
 
 
 # Reihenfolge = Ausführungsreihenfolge für Neuanlagen/Änderungen; Löschungen

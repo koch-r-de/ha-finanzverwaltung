@@ -756,6 +756,7 @@ async function ladeKontenAbschnitt() {
   saldoKorrekturDatumVorbelegen();
   await Promise.all([ladeKonten(), ladePersonen()]);
   await renderKontenTabelle();
+  await skKontoGewaehlt();
 }
 
 document.getElementById("konten-filter-person").addEventListener("change", renderKontenTabelle);
@@ -859,16 +860,98 @@ function buchungDatumVorbelegen() {
   datumMitHeuteVorbelegen('#form-buchung [name="datum"]');
 }
 
+// Saldo-Korrektur seit 3.1 (#12): Der Kontostand gilt am Ende des Tages. Die
+// App zeigt die Differenz zum eigenen Saldo und bucht sie erst nach
+// Bestätigung als Korrekturbuchung bzw. Anfangsbestand. Das Feld
+// „Anfangsbestand“ erscheint, solange das Konto keinen hat, und ist
+// angehakt, solange das Konto keine Ist-Buchung und keine Übertragung hat.
+let SK_VORSCHAU = null;
+let SK_INFO = null;
+
+function skVorschauVerwerfen() {
+  SK_VORSCHAU = null;
+  document.getElementById("sk-vorschau").hidden = true;
+}
+
+function skDatumSetzen() {
+  const form = document.getElementById("form-saldo-korrektur");
+  const heute = heuteISO();
+  const eroeffnung = SK_INFO?.eroeffnungsdatum;
+  form.datum.value = form.anfangsbestand.checked && eroeffnung ? (eroeffnung < heute ? eroeffnung : heute) : heute;
+  feiertagHinweisZeigen(form.datum);
+}
+
+async function skKontoGewaehlt() {
+  const form = document.getElementById("form-saldo-korrektur");
+  skVorschauVerwerfen();
+  SK_INFO = null;
+  const feld = document.getElementById("sk-anfangsbestand-feld");
+  if (!form.konto_id.value) { feld.hidden = true; return; }
+  SK_INFO = await api(`/saldo-korrekturen/vorschau?konto_id=${form.konto_id.value}`);
+  feld.hidden = !SK_INFO.anfangsbestand_moeglich;
+  form.anfangsbestand.checked = SK_INFO.anfangsbestand_vorbelegt;
+  skDatumSetzen();
+}
+
+document.querySelector('#form-saldo-korrektur [name="konto_id"]').addEventListener("change", skKontoGewaehlt);
+document.querySelector('#form-saldo-korrektur [name="anfangsbestand"]').addEventListener("change", () => {
+  skVorschauVerwerfen(); skDatumSetzen();
+});
+["datum", "saldo"].forEach((n) => document.querySelector(`#form-saldo-korrektur [name="${n}"]`)
+  .addEventListener("input", skVorschauVerwerfen));
+
 document.getElementById("form-saldo-korrektur").addEventListener("submit", async (e) => {
   e.preventDefault();
   const d = formularZuObjekt(e.target);
-  await api("/saldo-korrekturen", { method: "POST", body: JSON.stringify({
-    konto_id: Number(d.konto_id), datum: d.datum, saldo: Number(d.saldo), kommentar: d.kommentar || null,
-  })});
-  saldoKorrekturDatumVorbelegen();
-  e.target.reset();
-  await ladeKontenAbschnitt();
+  const meldung = document.getElementById("sk-meldung");
+  meldung.textContent = "";
+  const ab = e.target.anfangsbestand.checked;
+  const param = new URLSearchParams({ konto_id: d.konto_id, datum: d.datum, saldo: d.saldo, anfangsbestand: ab });
+  try {
+    const v = await api(`/saldo-korrekturen/vorschau?${param}`);
+    const datum = new Date(v.datum).toLocaleDateString("de-DE");
+    const text = document.getElementById("sk-vorschau-text");
+    if (Math.abs(v.differenz) < 0.005) {
+      text.textContent = `Der Saldo von „${v.konto}“ am Ende des ${datum} ist schon ${euro(v.saldo_app)}. Es wird nichts gebucht.`;
+      document.getElementById("sk-buchen").hidden = true;
+    } else {
+      text.textContent = `Saldo von „${v.konto}“ am Ende des ${datum} laut App: ${euro(v.saldo_app)}. ` +
+        `Dein Kontostand: ${euro(v.kontostand)}. Gebucht wird die Differenz ${euro(v.differenz)} ` +
+        `als „${ab ? "Anfangsbestand" : "Korrekturbuchung"}“.`;
+      document.getElementById("sk-buchen").hidden = false;
+    }
+    SK_VORSCHAU = { ...d, anfangsbestand: ab, differenz: v.differenz };
+    document.getElementById("sk-vorschau").hidden = false;
+  } catch (err) {
+    skVorschauVerwerfen();
+    meldung.textContent = apiFehlerText(err);
+  }
 });
+
+document.getElementById("sk-buchen").addEventListener("click", async () => {
+  if (!SK_VORSCHAU) return;
+  const v = SK_VORSCHAU;
+  const meldung = document.getElementById("sk-meldung");
+  try {
+    const r = await api("/saldo-korrekturen", { method: "POST", body: JSON.stringify({
+      konto_id: Number(v.konto_id), datum: v.datum, saldo: Number(v.saldo), kommentar: v.kommentar || null,
+      anfangsbestand: v.anfangsbestand, differenz: v.differenz,
+    })});
+    meldung.textContent = `Gebucht: ${r.beschreibung} (${euro(r.betrag)}).`;
+    const form = document.getElementById("form-saldo-korrektur");
+    const konto = form.konto_id.value;
+    form.reset();
+    form.konto_id.value = konto;
+    skVorschauVerwerfen();
+    saldoKorrekturDatumVorbelegen();
+    await ladeKontenAbschnitt();
+  } catch (err) {
+    skVorschauVerwerfen();
+    meldung.textContent = apiFehlerText(err);
+  }
+});
+
+document.getElementById("sk-abbrechen").addEventListener("click", skVorschauVerwerfen);
 
 // ─── Buchungen-Abschnitt ──────────────────────────────────────────
 
@@ -928,14 +1011,23 @@ async function renderBuchungenTabelle() {
       <td>${b.beschreibung || "–"}</td>
       <td class="rechts zahl ${b.betrag < 0 ? "negativ" : "positiv"}">${euro(b.betrag)}</td>
       <td class="reihen-werkzeuge">${b.virtuell ? '<span class="hinweis">geplant</span>' :
-        `<button class="knopf sekundaer klein" onclick="buchungBearbeiten(${b.id})">Ändern</button>
+        `${KATEGORIEN.find((k) => k.id === b.kategorie_id)?.korrektur ? "" :
+          `<button class="knopf sekundaer klein" onclick="buchungBearbeiten(${b.id})">Ändern</button>`}
          <button class="knopf gefahr klein" onclick="loescheBuchung(${b.id})">Löschen</button>`}</td>
     </tr>`;
   }).join("") || `<tr><td colspan="8" class="leer">Keine Buchungen</td></tr>`;
 }
 
+// Seit 3.1 (#12): Saldo-Korrekturen und Anfangsbestände nennen vor dem
+// Löschen die Folge für den Saldo. Andere Buchungen wie bisher.
 async function loescheBuchung(id) {
-  if (!confirm("Buchung wirklich löschen?")) return;
+  const b = await api(`/buchungen/${id}`);
+  const kat = KATEGORIEN.find((k) => k.id === b.kategorie_id);
+  const frage = kat?.korrektur
+    ? `${kat.system_key === "anfangsbestand" ? "Anfangsbestand" : "Saldo-Korrektur"} löschen? ` +
+      `Der Saldo ändert sich ab dem ${new Date(b.datum).toLocaleDateString("de-DE")} um ${euro(-b.betrag)}.`
+    : "Buchung wirklich löschen?";
+  if (!confirm(frage)) return;
   await api(`/buchungen/${id}`, { method: "DELETE" });
   await renderBuchungenTabelle();
   await ladeKonten();

@@ -345,6 +345,92 @@ def saldo(conn, konto_id: int, stichtag: Optional[date] = None, inkl_plan: bool 
     return round(ist - abgang + zugang, 2)
 
 
+# ─── Saldo-Korrektur (seit 3.1, #12) ────────────────────────────────
+
+def kategorie_id_aus_schluessel(conn, system_key: str) -> int:
+    row = conn.execute("SELECT id FROM kategorien WHERE system_key = ?", (system_key,)).fetchone()
+    if row is None:
+        raise ValueError(f"System-Kategorie '{system_key}' fehlt - Migration nicht gelaufen?")
+    return row["id"]
+
+
+def euro_de(betrag: float) -> str:
+    """1234.5 -> '1.234,50 €' (Beschreibungen und Meldungen)."""
+    return f"{betrag:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def hat_saldobewegung(conn, konto_id: int) -> bool:
+    """Ist-Buchung oder Übertragung als Quelle oder Ziel, also alles, was den
+    Saldo bewegt (Plan-Buchungen und Vorlagen zählen nicht)."""
+    return conn.execute(
+        """SELECT 1 FROM buchungen WHERE (typ = 'Ist' AND konto_id = ?)
+           OR (typ = 'Uebertragung' AND (konto_id = ? OR zielkonto_id = ?)) LIMIT 1""",
+        (konto_id, konto_id, konto_id)).fetchone() is not None
+
+
+def hat_anfangsbestand(conn, konto_id: int) -> bool:
+    ids = [k for k, key in korrektur_kategorien(conn).items() if key == "anfangsbestand"]
+    return bool(ids) and conn.execute(
+        f"SELECT 1 FROM buchungen WHERE konto_id = ? AND kategorie_id IN ({','.join('?' * len(ids))}) LIMIT 1",
+        (konto_id, *ids)).fetchone() is not None
+
+
+def saldo_korrektur_vorschau(conn, *, konto_id: int, datum: Optional[date] = None,
+                             kontostand: Optional[float] = None, anfangsbestand: bool = False) -> dict:
+    """Grundlage für den Block „Saldo-Korrektur“: ob das Feld „Anfangsbestand“
+    erscheint (kein Anfangsbestand auf dem Konto) und ob es vorbelegt ist
+    (keine Saldobewegung), dazu mit Datum und Kontostand die Differenz zum
+    Saldo am Ende des Stichtags (einschließlich aller Buchungen dieses Tages).
+    ValueError bei Zukunftsdatum, unbekanntem Konto oder zweitem Anfangsbestand."""
+    konto = conn.execute("SELECT id, name, eroeffnungsdatum FROM konten WHERE id = ?", (konto_id,)).fetchone()
+    if konto is None:
+        raise ValueError("Das Konto existiert nicht.")
+    moeglich = not hat_anfangsbestand(conn, konto_id)
+    ergebnis = {"konto_id": konto_id, "konto": konto["name"], "eroeffnungsdatum": konto["eroeffnungsdatum"],
+                "anfangsbestand_moeglich": moeglich,
+                "anfangsbestand_vorbelegt": moeglich and not hat_saldobewegung(conn, konto_id)}
+    if datum is None or kontostand is None:
+        return ergebnis
+    if _iso(datum) > zeit.heute().isoformat():
+        raise ValueError("Eine Saldo-Korrektur darf nicht in der Zukunft liegen.")
+    if anfangsbestand and not moeglich:
+        raise ValueError(f"Das Konto „{konto['name']}“ hat schon einen Anfangsbestand. "
+                         "Lösche ihn in der Buchungsliste, um ihn neu anzulegen.")
+    saldo_app = saldo(conn, konto_id, datum)
+    ergebnis.update(datum=_iso(datum), kontostand=round(kontostand, 2), saldo_app=saldo_app,
+                    differenz=round(kontostand - saldo_app, 2), anfangsbestand=bool(anfangsbestand))
+    return ergebnis
+
+
+def saldo_korrektur_buchen(conn, *, konto_id: int, datum: date, kontostand: float,
+                           anfangsbestand: bool = False, kommentar: Optional[str] = None,
+                           differenz: Optional[float] = None) -> dict:
+    """Bucht die Differenz als Ist-Buchung in „Korrekturbuchung“ bzw.
+    „Anfangsbestand“. differenz: der in der Oberfläche bestätigte Wert, weicht
+    er inzwischen ab (andere Buchung dazwischen), wird nicht gebucht.
+    Differenz 0: nichts zu buchen (ValueError)."""
+    if datum is None:
+        raise ValueError("Das Datum fehlt.")
+    v = saldo_korrektur_vorschau(conn, konto_id=konto_id, datum=datum, kontostand=kontostand,
+                                 anfangsbestand=anfangsbestand)
+    if differenz is not None and round(differenz, 2) != v["differenz"]:
+        raise ValueError(f"Der Saldo hat sich inzwischen geändert, die Differenz beträgt jetzt "
+                         f"{euro_de(v['differenz'])}. Bitte erneut prüfen.")
+    if abs(v["differenz"]) < 0.005:
+        raise ValueError("Der Kontostand stimmt bereits, es wird nichts gebucht.")
+    key = "anfangsbestand" if anfangsbestand else "korrekturbuchung"
+    beschreibung = (f"Anfangsbestand {euro_de(v['kontostand'])}" if anfangsbestand
+                    else f"Saldo-Korrektur auf {euro_de(v['kontostand'])}")
+    if kommentar and kommentar.strip():
+        beschreibung += f" – {kommentar.strip()}"
+    cur = conn.execute(
+        """INSERT INTO buchungen (konto_id, datum, betrag, kategorie_id, typ, beschreibung)
+           VALUES (?, ?, ?, ?, 'Ist', ?)""",
+        (konto_id, v["datum"], v["differenz"], kategorie_id_aus_schluessel(conn, key), beschreibung))
+    conn.commit()
+    return {"id": cur.lastrowid, "betrag": v["differenz"], "datum": v["datum"], "beschreibung": beschreibung}
+
+
 def sql_in(spalte: str, menge, bedingungen: list, params: list) -> None:
     """Mehrfachfilter (seit v2.3): menge None = kein Filter, leere Menge =
     nichts, sonst spalte IN (...)."""

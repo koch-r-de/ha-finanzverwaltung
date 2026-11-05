@@ -10,21 +10,25 @@ Löscht ausgewählte Datenarten dauerhaft. Absicherung in drei Stufen:
      ("vor Löschung von ...") angelegt (siehe backup.backup_erstellen).
 
 Datenarten (Schlüssel -> Wirkung):
-  konten_leeren    Alle Buchungen (Ist, Plan, Übertragungen) und Saldo-
-                   Korrekturen der gewählten Konten; die Konten bleiben.
+  konten_leeren    Alle Buchungen (Ist, Plan, Übertragungen, seit 3.1 auch die
+                   Saldo-Korrekturen) der gewählten Konten; die Konten bleiben.
   konten_loeschen  Gewählte Konten werden entfernt. Teilauswahl: alles, was
                    an ihnen hängt (Buchungen, Vorlagen inkl. Zielkonto von
                    Umbuchungs-Vorlagen - seit v1.10; würden Quell- und Zielkonto
                    gleich, wird die Vorlage deaktiviert -, Altersvorsorge,
                    Darlehens-Zahlungskonto, Sparziel-Trägerkonto), wird auf
-                   ein Zielkonto umgestellt. Saldo-Korrekturen der gelöschten
-                   Konten werden NICHT übernommen (bewusst, v1.8) - die Summe der
-                   Kontostände kann sich dadurch ändern; die Vorschau beziffert
-                   die Änderung. Alle Konten: sämtliche Buchungen werden
+                   ein Zielkonto umgestellt. Seit 3.1 sind Saldo-Korrekturen
+                   Buchungen und ziehen mit um, die Summe der Kontostände
+                   bleibt gleich. Je Konto gibt es höchstens einen
+                   Anfangsbestand: Hat das Zielkonto schon einen, werden die
+                   übernommenen zu Korrekturbuchungen, sonst bleibt der
+                   früheste (Datum, Id). Bis 3.0 entfielen die Korrekturen der
+                   gelöschten Konten. Alle Konten: sämtliche Buchungen werden
                    mitgelöscht.
   ist_buchungen    Alle Ist-Buchungen bis einschließlich eines Stichtags (Standard
-                   heute, auch automatisch erzeugte) sowie alle Übertragungen
-                   bis zu diesem Datum - Übertragungen wirken auf beide Konten.
+                   heute, auch automatisch erzeugte und seit 3.1 die Saldo-
+                   Korrekturen) sowie alle Übertragungen bis zu diesem Datum -
+                   Übertragungen wirken auf beide Konten.
   plan_buchungen   Alle Plan-Buchungen, seit v1.10 zusätzlich per "Anpassen"
                    verschobene Übertragungen (aus Umbuchungs-Vorlagen) mit
                    künftigem Datum - sie behalten beim Anpassen ihren Typ.
@@ -98,6 +102,28 @@ def _zahl(conn, sql: str, params=()) -> int:
 
 def _id_menge(conn, sql: str, params=()) -> set[int]:
     return {r[0] for r in conn.execute(sql, params).fetchall()}
+
+
+def _korrektur_ids(conn, ids: set) -> set[int]:
+    """Saldo-Korrekturen und Anfangsbestände (seit 3.1 Buchungen) unter ids."""
+    kat = buchungen_modul.korrektur_kategorien(conn)
+    if not ids or not kat:
+        return set()
+    return _id_menge(conn, f"SELECT id FROM buchungen WHERE id IN ({_platzhalter(ids)}) "
+                           f"AND kategorie_id IN ({_platzhalter(kat)})", (*ids, *kat))
+
+
+def _anfangsbestaende_umwidmen(conn, ids, ziel: int) -> set[int]:
+    """Buchungs-IDs der Anfangsbestände der Konten ids, die beim Zusammenführen
+    auf ziel zu Korrekturbuchungen werden (seit 3.1, höchstens einer je Konto)."""
+    ab = [k for k, key in buchungen_modul.korrektur_kategorien(conn).items() if key == "anfangsbestand"]
+    if not ab:
+        return set()
+    zeilen = conn.execute(
+        f"SELECT id, konto_id FROM buchungen WHERE kategorie_id IN ({_platzhalter(ab)}) "
+        f"AND konto_id IN ({_platzhalter([*ids, ziel])}) ORDER BY datum, id", (*ab, *ids, ziel)).fetchall()
+    behalten = next((z["id"] for z in zeilen if z["konto_id"] == ziel), None) or (zeilen[0]["id"] if zeilen else None)
+    return {z["id"] for z in zeilen if z["id"] != behalten}
 
 
 def _plan_ids(conn) -> set[int]:
@@ -212,7 +238,9 @@ def vorschau(conn, norm: dict) -> dict:
             zeile = {"art": art, "titel": f"{BEZEICHNUNG[art]} bis einschließlich {_datum_de(bis)}",
                      "anzahl": len(ids), "einheit": "Buchungen",
                      "zusatz": [{"label": "Übertragungen bis zu diesem Datum (werden mitgelöscht)",
-                                 "anzahl": len(uebertragungen)}]}
+                                 "anzahl": len(uebertragungen)},
+                                {"label": "davon Saldo-Korrekturen und Anfangsbestände (werden mitgelöscht)",
+                                 "anzahl": len(_korrektur_ids(conn, ids))}]}
             if uebertragungen:
                 warnungen.append(
                     f"Mit den Ist-Buchungen werden auch {len(uebertragungen)} Übertragungen bis einschließlich "
@@ -237,7 +265,7 @@ def vorschau(conn, norm: dict) -> dict:
             b = _id_menge(conn, f"SELECT id FROM buchungen WHERE konto_id IN ({ph}) OR zielkonto_id IN ({ph})",
                           (*ids, *ids))
             buchungs_ids |= b
-            korrekturen = _zahl(conn, f"SELECT COUNT(*) FROM saldo_korrekturen WHERE konto_id IN ({ph})", ids)
+            korrekturen = len(_korrektur_ids(conn, b))
             uebertragungen_fremd = _zahl(
                 conn,
                 f"""SELECT COUNT(*) FROM buchungen WHERE typ = 'Uebertragung' AND
@@ -245,7 +273,7 @@ def vorschau(conn, norm: dict) -> dict:
                      OR (zielkonto_id IN ({ph}) AND konto_id NOT IN ({ph})))""",
                 (*ids, *ids, *ids, *ids))
             zusatz = [{"label": "Buchungen (Ist, Plan, Übertragungen)", "anzahl": len(b)},
-                      {"label": "Saldo-Korrekturen", "anzahl": korrekturen}]
+                      {"label": "davon Saldo-Korrekturen und Anfangsbestände", "anzahl": korrekturen}]
             if uebertragungen_fremd:
                 zusatz.append({"label": "davon Übertragungen zu/von nicht gewählten Konten "
                                         "(ändern dort den Saldo)", "anzahl": uebertragungen_fremd})
@@ -289,20 +317,21 @@ def vorschau(conn, norm: dict) -> dict:
         elif art == "konten_loeschen":
             ids = norm["loeschen"]
             ph = _platzhalter(ids)
-            korrekturen = _zahl(conn, f"SELECT COUNT(*) FROM saldo_korrekturen WHERE konto_id IN ({ph})", ids)
+            korrekturen = len(_korrektur_ids(conn, _id_menge(
+                conn, f"SELECT id FROM buchungen WHERE konto_id IN ({ph})", ids)))
             namen = _konto_namen(conn, ids)
             if alle_konten:
                 alle = _id_menge(conn, "SELECT id FROM buchungen")
                 buchungs_ids |= alle
                 zusatz = [{"label": "Buchungen werden mitgelöscht (Ist, Plan, Übertragungen)", "anzahl": len(alle)},
-                          {"label": "Saldo-Korrekturen", "anzahl": korrekturen},
+                          {"label": "davon Saldo-Korrekturen und Anfangsbestände", "anzahl": korrekturen},
                           {"label": "Darlehen verlieren ihr Zahlungskonto",
                            "anzahl": _zahl(conn, "SELECT COUNT(*) FROM darlehen WHERE zahlungskonto_id IS NOT NULL")},
                           {"label": "Sparziele verlieren ihr Trägerkonto",
                            "anzahl": _zahl(conn, "SELECT COUNT(*) FROM budgets WHERE konto_id IS NOT NULL")}]
                 warnungen.append(
                     "ACHTUNG: Es werden ALLE Konten gelöscht. Damit werden auch ALLE zugehörigen "
-                    "Buchungen (Ist, Plan, Übertragungen) und Saldo-Korrekturen unwiderruflich gelöscht.")
+                    "Buchungen (Ist, Plan, Übertragungen, Saldo-Korrekturen) unwiderruflich gelöscht.")
                 for tabelle, art_key, text in (
                         ("wiederkehrende_buchungen", "wiederkehrend", "wiederkehrende Vorlagen"),
                         ("altersvorsorge", "altersvorsorge", "Altersvorsorge-Verträge")):
@@ -339,15 +368,17 @@ def vorschau(conn, norm: dict) -> dict:
                         warnungen.append(
                             f"{deaktiv} aktive Umbuchungs-Vorlage(n) würden nach dem Umstellen vom Zielkonto auf "
                             "sich selbst umbuchen. Sie werden deaktiviert, nicht gelöscht.")
+                    umgewidmet = _anfangsbestaende_umwidmen(conn, ids, ziel)
+                    zusatz.append({"label": "Anfangsbestände werden zu Korrekturbuchungen (je Konto nur einer, "
+                                            "zählen dann im Cashflow)", "anzahl": len(umgewidmet)})
                     differenz = _saldo_auswirkung(conn, ids, ziel)
                     if abs(differenz) >= 0.005:
+                        # Seit 3.1 nicht mehr zu erwarten, die Saldo-Korrekturen ziehen mit um.
                         warnungen.append(
                             "Die Summe der Kontostände von Zielkonto und gelöschten Konten ändert sich durch "
-                            f"die Zusammenführung um {_euro_de(differenz)}. Ursache: Saldo-Korrekturen der "
-                            "gelöschten Konten werden nicht übernommen, und umgebuchte Buchungen, die vor der "
-                            "jüngsten Saldo-Korrektur des Zielkontos liegen, zählen dort nicht mit.")
+                            f"die Zusammenführung um {_euro_de(differenz)}.")
                 zusatz += [
-                    {"label": "Saldo-Korrekturen (werden gelöscht, nicht übertragen)", "anzahl": korrekturen},
+                    {"label": "davon Saldo-Korrekturen und Anfangsbestände (werden umgestellt)", "anzahl": korrekturen},
                     {"label": "Wiederkehrende Vorlagen werden umgestellt (Konto oder Zielkonto)",
                      "anzahl": _zahl(conn, f"SELECT COUNT(*) FROM wiederkehrende_buchungen "
                                            f"WHERE konto_id IN ({ph}) OR zielkonto_id IN ({ph})", (*ids, *ids))},
@@ -516,7 +547,6 @@ def ausfuehren(conn, norm: dict) -> dict:
             ids = norm["leeren"]
             ph = _platzhalter(ids)
             conn.execute(f"DELETE FROM buchungen WHERE konto_id IN ({ph}) OR zielkonto_id IN ({ph})", (*ids, *ids))
-            conn.execute(f"DELETE FROM saldo_korrekturen WHERE konto_id IN ({ph})", ids)
         if "wiederkehrend" in arten:
             conn.execute("UPDATE buchungen SET wiederkehrend_id = NULL WHERE wiederkehrend_id IS NOT NULL")
             conn.execute("DELETE FROM wiederkehrende_buchungen")
@@ -550,7 +580,6 @@ def _konten_loeschen(conn, norm: dict, alle_konten: bool) -> None:
             if _zahl(conn, f"SELECT COUNT(*) FROM {tabelle}"):
                 raise ZuruecksetzenFehler(f"Es existieren noch {text}, die ein Konto benötigen.")
         conn.execute("DELETE FROM buchungen")
-        conn.execute("DELETE FROM saldo_korrekturen")
         conn.execute("UPDATE darlehen SET zahlungskonto_id = NULL")
         conn.execute("UPDATE budgets SET konto_id = NULL")
         conn.execute("DELETE FROM konten")
@@ -569,6 +598,10 @@ def _konten_umstellen(conn, ids, ziel: int) -> None:
     selbst = _selbst_uebertragungen(conn, ids, ziel)
     if selbst:
         conn.execute(f"DELETE FROM buchungen WHERE id IN ({_platzhalter(selbst)})", list(selbst))
+    umgewidmet = _anfangsbestaende_umwidmen(conn, ids, ziel)
+    if umgewidmet:
+        conn.execute(f"UPDATE buchungen SET kategorie_id = ? WHERE id IN ({_platzhalter(umgewidmet)})",
+                     (buchungen_modul.kategorie_id_aus_schluessel(conn, "korrekturbuchung"), *umgewidmet))
     conn.execute(f"UPDATE buchungen SET konto_id = ? WHERE konto_id IN ({ph})", (ziel, *ids))
     conn.execute(f"UPDATE buchungen SET zielkonto_id = ? WHERE zielkonto_id IN ({ph})", (ziel, *ids))
     conn.execute(f"UPDATE wiederkehrende_buchungen SET konto_id = ? WHERE konto_id IN ({ph})", (ziel, *ids))
@@ -579,7 +612,6 @@ def _konten_umstellen(conn, ids, ziel: int) -> None:
     conn.execute(f"UPDATE altersvorsorge SET zahlungskonto_id = ? WHERE zahlungskonto_id IN ({ph})", (ziel, *ids))
     conn.execute(f"UPDATE darlehen SET zahlungskonto_id = ? WHERE zahlungskonto_id IN ({ph})", (ziel, *ids))
     conn.execute(f"UPDATE budgets SET konto_id = ? WHERE konto_id IN ({ph})", (ziel, *ids))
-    conn.execute(f"DELETE FROM saldo_korrekturen WHERE konto_id IN ({ph})", ids)
     conn.execute(f"DELETE FROM konten WHERE id IN ({ph})", ids)
     # Standardkonto der Siri-Schnellbuchung (als Text gespeichert)
     conn.execute(
