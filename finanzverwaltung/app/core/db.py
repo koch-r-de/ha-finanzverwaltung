@@ -113,6 +113,10 @@ SYSTEM_KATEGORIEN = [
     ("darlehen_tilgung",      "Tilgung",                   "darlehen",  "ausgabe"),
     ("darlehen_auszahlung",   "Auszahlung",                "darlehen",  "einnahme"),
     ("umbuchung",             "Umbuchung",                 None,        None),
+    # Seit 3.1 (#12): Saldo-Korrektur als Buchung. Neutral, das Vorzeichen ist
+    # die berechnete Differenz. Gebucht nur über die Saldo-Korrektur.
+    ("korrekturbuchung",      "Korrekturbuchung",          None,        None),
+    ("anfangsbestand",        "Anfangsbestand",            None,        None),
     ("einnahmen",             "Einnahmen",                 None,        "einnahme"),
     ("einnahmen_gehalt",      "Gehalt & Lohn",             "einnahmen", "einnahme"),
     ("einnahmen_sonstige",    "Sonstige Einkünfte",        "einnahmen", "einnahme"),
@@ -302,6 +306,11 @@ def _migriere_altersvorsorge_einzahlung_optional(conn) -> list[str]:
     return ["Tabelle altersvorsorge umgebaut: Einzahlungsfelder sind jetzt optional (hat_einzahlung)"]
 
 
+# Feste Kategorien, die eine gleichnamige eigene Hauptkategorie übernehmen und
+# dabei neutral machen (seit 3.1, #12). Andere übernehmen den Typ nur, wenn er fehlt.
+NEUTRAL_UEBERNOMMEN = {"korrekturbuchung", "anfangsbestand"}
+
+
 def _migriere_system_kategorien(conn) -> list[str]:
     """
     Ordnet den bereits vorhandenen System-Kategorien ihren system_key zu
@@ -326,7 +335,15 @@ def _migriere_system_kategorien(conn) -> list[str]:
                 (name, parent_id),
             ).fetchone()
 
-        if treffer:
+        if treffer and key in NEUTRAL_UEBERNOMMEN:
+            # Seit 3.1: eine eigene Hauptkategorie gleichen Namens wird übernommen
+            # (Entscheidung zu #12) und neutral, Vorzeichen der Buchungen bleiben.
+            conn.execute("UPDATE kategorien SET system_key = ?, typ = NULL WHERE id = ?", (key, treffer["id"]))
+            anzahl = conn.execute("SELECT COUNT(*) FROM buchungen WHERE kategorie_id = ?",
+                                  (treffer["id"],)).fetchone()[0]
+            schritte.append(f"Eigene Kategorie „{name}“ als feste Kategorie übernommen ({anzahl} Buchung(en), "
+                            "jetzt neutral und nur über die Saldo-Korrektur buchbar)")
+        elif treffer:
             conn.execute("UPDATE kategorien SET system_key = ?, typ = COALESCE(typ, ?) WHERE id = ?",
                          (key, typ, treffer["id"]))
         else:

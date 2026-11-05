@@ -84,7 +84,27 @@ def umbuchung_kategorie_id(conn) -> int:
 GESPERRTE_KATEGORIEN = {
     "umbuchung": "Die Kategorie „Umbuchung“ ist Übertragungen zwischen eigenen Konten vorbehalten. "
                  "Dafür gibt es den Typ „Übertragung“, bei Vorlagen die Art „Umbuchung“.",
+    "korrekturbuchung": "Die Kategorie „Korrekturbuchung“ entsteht nur über die Saldo-Korrektur bei den Konten.",
+    "anfangsbestand": "Die Kategorie „Anfangsbestand“ entsteht nur über die Saldo-Korrektur bei den Konten.",
 }
+
+# Saldo-Korrektur (seit 3.1, #12): Buchungen dieser Kategorien sind nicht
+# änderbar, nur löschbar, und die Kategorien bekommen keine Unterkategorien.
+KORREKTUR_KATEGORIEN = ("korrekturbuchung", "anfangsbestand")
+
+
+def korrektur_kategorien(conn) -> dict:
+    """Kategorie-ID -> system_key für Korrekturbuchung und Anfangsbestand samt
+    Unterkategorien (die es nur bei übernommenen eigenen Kategorien gibt)."""
+    ergebnis = {}
+    for key in KORREKTUR_KATEGORIEN:
+        row = conn.execute("SELECT id FROM kategorien WHERE system_key = ?", (key,)).fetchone()
+        rand = [row["id"]] if row else []
+        while rand:
+            ergebnis.update({k: key for k in rand})
+            rand = [r["id"] for r in conn.execute(
+                f"SELECT id FROM kategorien WHERE parent_id IN ({','.join('?' * len(rand))})", rand).fetchall()]
+    return ergebnis
 
 
 def gesperrte_kategorien(conn) -> dict:
@@ -100,10 +120,12 @@ def gesperrte_kategorien(conn) -> dict:
     return ergebnis
 
 
-def gesperrte_ids_aus_liste(kategorien) -> set:
+def gesperrte_ids_aus_liste(kategorien, schluessel=None) -> set:
     """Wie gesperrte_kategorien, aber aus einer Liste von Kategorien (dicts mit
-    id, parent_id, system_key), etwa dem Auszug bei verschlossener Datenbank."""
-    ids = {k["id"] for k in kategorien if k.get("system_key") in GESPERRTE_KATEGORIEN}
+    id, parent_id, system_key), etwa dem Auszug bei verschlossener Datenbank.
+    schluessel: andere Menge von system_keys (Standard: GESPERRTE_KATEGORIEN)."""
+    schluessel = GESPERRTE_KATEGORIEN if schluessel is None else schluessel
+    ids = {k["id"] for k in kategorien if k.get("system_key") in schluessel}
     neu = ids
     while neu:
         neu = {k["id"] for k in kategorien if k.get("parent_id") in neu} - ids
@@ -124,6 +146,8 @@ def kategorie_anlegen(conn, name: str, parent_id: Optional[int] = None, typ: Opt
     """Ohne ausdrücklichen Typ wird er vom obersten Knoten der Elternkette
     geerbt (siehe db.typ_vom_wurzelknoten)."""
     from .db import typ_vom_wurzelknoten
+    if parent_id in korrektur_kategorien(conn):
+        raise ValueError("Unter „Korrekturbuchung“ und „Anfangsbestand“ sind keine Unterkategorien möglich.")
     if typ is None:
         typ = typ_vom_wurzelknoten(conn, parent_id)
     cur = conn.execute(
@@ -140,6 +164,11 @@ def kategorie_bearbeiten(conn, kategorie_id: int, name: str, parent_id: Optional
     kategorie_ist_system)."""
     if kategorie_ist_system(conn, kategorie_id):
         raise ValueError("Diese Kategorie ist fest vorgegeben und kann nicht geändert werden.")
+    korrektur = korrektur_kategorien(conn)
+    alt_parent = conn.execute("SELECT parent_id FROM kategorien WHERE id = ?", (kategorie_id,)).fetchone()
+    if parent_id in korrektur or (kategorie_id in korrektur and alt_parent and alt_parent["parent_id"] != parent_id):
+        raise ValueError("In „Korrekturbuchung“ und „Anfangsbestand“ lassen sich keine Kategorien "
+                         "hinein- oder herausschieben.")
     from .db import typ_vom_wurzelknoten
     if typ is None:
         typ = typ_vom_wurzelknoten(conn, parent_id)
@@ -598,6 +627,9 @@ def buchung_bearbeiten(conn, buchung_id: int, *, konto_id: int, datum: date, bet
     """
     if typ not in ("Ist", "Plan", "Uebertragung"):
         raise ValueError(f"Unbekannter Buchungstyp: {typ}")
+    alt = conn.execute("SELECT kategorie_id FROM buchungen WHERE id = ?", (buchung_id,)).fetchone()
+    if alt and alt["kategorie_id"] in korrektur_kategorien(conn):
+        raise ValueError("Eine Saldo-Korrektur lässt sich nicht ändern. Lösche sie und lege eine neue an.")
     if typ == "Uebertragung":
         if not zielkonto_id:
             raise ValueError("Bei Übertragungen ist ein Zielkonto Pflicht.")

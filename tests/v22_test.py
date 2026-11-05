@@ -117,8 +117,10 @@ pruef("Neue DB: Rente unter Einnahmen, Darlehens-Zinsen",
 pruef("Neue DB: Umstellung als erledigt gemerkt, kein Backup",
       c.execute("SELECT value FROM einstellungen WHERE key = 'migration_kategorien_v22_erledigt'").fetchone()[0] == "1"
       and not c.execute("SELECT 1 FROM backups_log").fetchone())
-pruef("Neue DB: alle Kategorien mit Typ (außer Darlehen/Umbuchung)",
-      not c.execute("SELECT 1 FROM kategorien WHERE typ IS NULL AND system_key NOT IN ('darlehen','umbuchung')").fetchone())
+# Seit 3.1 zusätzlich neutral: Korrekturbuchung und Anfangsbestand (#12)
+pruef("Neue DB: alle Kategorien mit Typ (außer Darlehen, Umbuchung, Korrekturbuchung, Anfangsbestand)",
+      not c.execute("SELECT 1 FROM kategorien WHERE typ IS NULL AND system_key NOT IN "
+                    "('darlehen','umbuchung','korrekturbuchung','anfangsbestand')").fetchone())
 
 fehl = [n for n, o in ERG if not o]
 print(f"\n{len(ERG) - len(fehl)}/{len(ERG)} bestanden", fehl)

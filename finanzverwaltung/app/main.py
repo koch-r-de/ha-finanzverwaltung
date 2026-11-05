@@ -407,9 +407,11 @@ class KategorieIn(BaseModel):
 
 def _mit_sperrvermerk(kategorien: list) -> list:
     """Seit 3.1: Feld "gesperrt" je Kategorie (buchungen.GESPERRTE_KATEGORIEN),
-    damit die Oberfläche sie in Auswahlfeldern auslässt."""
+    damit die Oberfläche sie in Auswahlfeldern auslässt, und "korrektur" für
+    Korrekturbuchung und Anfangsbestand (nicht änderbar, keine Unterkategorien)."""
     gesperrt = buchungen.gesperrte_ids_aus_liste(kategorien)
-    return [{**k, "gesperrt": k["id"] in gesperrt} for k in kategorien]
+    korrektur = buchungen.gesperrte_ids_aus_liste(kategorien, buchungen.KORREKTUR_KATEGORIEN)
+    return [{**k, "gesperrt": k["id"] in gesperrt, "korrektur": k["id"] in korrektur} for k in kategorien]
 
 
 @app.get("/api/kategorien")
@@ -426,6 +428,8 @@ def api_kategorie_anlegen(payload: KategorieIn):
     conn = verbindung()
     try:
         return {"id": buchungen.kategorie_anlegen(conn, payload.name, payload.parent_id, payload.typ)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     finally:
         conn.close()
 

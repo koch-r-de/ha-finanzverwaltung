@@ -691,17 +691,22 @@ function kategoriePfad(id) {
 
 async function ladeKategorien() {
   KATEGORIEN = await api("/kategorien");
-  // ohneGesperrte: gesperrte Kategorien (Feld "gesperrt" vom Server, z. B.
-  // „Umbuchung“) auslassen. Seit 3.1 in allen Formularen mit
-  // data-ohne-gesperrte (Befund AA), bis 3.0 nur bei Vorlagen.
-  const optionen = (parentId, praefix, ohneGesperrte) =>
-    KATEGORIEN.filter((k) => k.parent_id === parentId && !(ohneGesperrte && k.gesperrt))
+  // Seit 3.1 lassen Auswahlfelder aus (Felder vom Server):
+  //   data-ohne-gesperrte  gesperrte Kategorien wie „Umbuchung“ (Befund AA,
+  //                        bis 3.0 nur bei Vorlagen)
+  //   data-ohne-korrektur  Korrekturbuchung und Anfangsbestand (Oberkategorie:
+  //                        keine Unterkategorien, #12)
+  const optionen = (parentId, praefix, weglassen) =>
+    KATEGORIEN.filter((k) => k.parent_id === parentId && !weglassen(k))
       .flatMap((k) => [`<option value="${k.id}">${praefix}${k.name}</option>`,
-                       ...optionen(k.id, praefix + "— ", ohneGesperrte)])
+                       ...optionen(k.id, praefix + "— ", weglassen)])
       .join("");
   document.querySelectorAll(".kategorie-auswahl").forEach((sel) => {
     const vorherigeErsteOption = sel.querySelector('option[value=""]')?.outerHTML || "";
-    sel.innerHTML = vorherigeErsteOption + optionen(null, "", sel.hasAttribute("data-ohne-gesperrte"));
+    const ohneGesperrte = sel.hasAttribute("data-ohne-gesperrte");
+    const ohneKorrektur = sel.hasAttribute("data-ohne-korrektur");
+    sel.innerHTML = vorherigeErsteOption + optionen(null, "",
+      (k) => (ohneGesperrte && k.gesperrt) || (ohneKorrektur && k.korrektur));
   });
   mehrfachNeuZeichnen();
 }
