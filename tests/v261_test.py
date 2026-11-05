@@ -34,7 +34,9 @@ with TestClient(app) as c:
     pruef("Korrektur: keine Ist- oder Plan-Buchung mehr mit Zielkonto",
           con.execute("SELECT COUNT(*) FROM buchungen WHERE typ <> 'Uebertragung' AND zielkonto_id IS NOT NULL").fetchone()[0] == 0)
     pruef("Korrektur: Übertragungen behalten ihr Zielkonto",
-          dict(con.execute("SELECT id, zielkonto_id FROM buchungen WHERE typ = 'Uebertragung'")) == uebertragungen
+          # Befund Z (3.1): nur die vorher vorhandenen, der Start bucht je nach Testtag neue
+          {i: z for i, z in con.execute("SELECT id, zielkonto_id FROM buchungen WHERE typ = 'Uebertragung'")
+           if i in uebertragungen} == uebertragungen
           and all(uebertragungen.values()), uebertragungen)
     pruef("Korrektur: Merker gesetzt",
           con.execute("SELECT value FROM einstellungen WHERE key = 'korrektur_zielkonto_v261_erledigt'").fetchone()[0] == "1")

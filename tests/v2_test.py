@@ -168,14 +168,24 @@ with TestClient(app) as c:
     def av_b():
         bs = [b for b in ok(c.get("/api/buchungen")) if b.get("ziel_altersvorsorge_id") == av]
         return sorted(b["datum"] for b in bs if b["betrag"] < 0), sorted(b["datum"] for b in bs if b["betrag"] > 0), bs
+    # Befund Z (3.1): Termine am 1. bis heute, verschoben wie im Generator,
+    # statt fester Anzahlen, die am Testtag hingen.
+    from app.core import feiertage as feiertage_modul
+    def termine_ab(ab: date, bis: date = HEUTE) -> list[str]:
+        kal, t, m = feiertage_modul.bank_kalender(), [], ab
+        while (d := feiertage_modul.vorheriger_werktag(m, kal)) <= bis:
+            t.append(d.isoformat()); m += relativedelta(months=1)
+        return t
+    alle_bis_heute = termine_ab(date(2026, 1, 1))
+    ab_jul, ab_sep = termine_ab(date(2026, 7, 1)), termine_ab(date(2026, 9, 1))
     beitr, renten, _ = av_b()
-    pruef("P5: Ausgangslage 10 Beiträge, keine Rente", len(beitr) == 10 and not renten, (len(beitr), renten))
+    pruef("P5: Ausgangslage Beiträge bis heute, keine Rente", beitr == alle_bis_heute and not renten, (len(beitr), renten))
     # einen Beitrag (Aug) im Plan-Protokoll anpassen
     # Beitrag September (01.09.2026, Dienstag) im Plan-Protokoll anpassen
     sep = next(b for b in av_b()[2] if b["datum"] == "2026-09-01")
     ok(c.post(f"/api/plan-buchungen/{sep['id']}/ablehnen-anpassen?neues_datum=2026-09-14"))
     p = ok(c.get(f"/api/altersvorsorge/{av}/phasen-pruefung?rentenbeginn=2026-07-01"))
-    pruef("P5: Vorschau vorverlegt: 3 löschen (Jul, Aug=31.07., Okt), 1 angepasst", p == {"loeschen": 3, "angepasst": 1}, p)
+    pruef("P5: Vorschau vorverlegt: Beiträge ab Jul löschen außer dem angepassten Sep", p == {"loeschen": len(ab_jul) - 1, "angepasst": 1}, p)
     a = ok(c.get(f"/api/altersvorsorge/{av}"))
     a.update(rentenbeginn="2026-07-01")
     body = {k2: a[k2] for k2 in ["bezeichnung", "anbieter", "zahlungskonto_id", "person_id", "stand_datum", "hat_einzahlung",
@@ -183,17 +193,17 @@ with TestClient(app) as c:
         "beitrag_dynamik_aktiv", "rentenbeginn", "ende_datum", "auszahlungsart", "auszahlung_kategorie_id", "rente_garantiert_betrag"]}
     ok(c.put(f"/api/altersvorsorge/{av}?phasen_bereinigen=true", json=body))
     beitr, renten, _ = av_b()
-    pruef("P5: danach 6 Beiträge + angepasster Aug, Renten Jul–Okt nachgebucht",
-          len(beitr) == 7 and "2026-09-14" in beitr and len(renten) == 4, (beitr, renten))
+    pruef("P5: danach 6 Beiträge + angepasster Sep, Renten ab Jul nachgebucht",
+          len(beitr) == 7 and "2026-09-14" in beitr and renten == ab_jul, (beitr, renten))
     body["rentenbeginn"] = "2027-01-01"
     p = ok(c.get(f"/api/altersvorsorge/{av}/phasen-pruefung?rentenbeginn=2027-01-01"))
-    pruef("P5: Vorschau nach hinten: 4 Renten löschen", p["loeschen"] == 4, p)
+    pruef("P5: Vorschau nach hinten: alle Renten löschen", p["loeschen"] == len(ab_jul), p)
     ok(c.put(f"/api/altersvorsorge/{av}?phasen_bereinigen=true", json=body))
     beitr, renten, _ = av_b()
-    pruef("P5: danach keine Rente, Beiträge Jul–Okt nachgebucht", not renten and len(beitr) == 10, (beitr, renten))
+    pruef("P5: danach keine Rente, Beiträge ab Jul nachgebucht", not renten and len(beitr) == len(alle_bis_heute), (beitr, renten))
     with TestClient(app) as c2:
         n = len([b for b in ok(c2.get("/api/buchungen")) if b.get("ziel_altersvorsorge_id") == av])
-    pruef("P5: Neustart ohne Duplikate", n == 10, n)
+    pruef("P5: Neustart ohne Duplikate", n == len(alle_bis_heute), n)
     # Einmalzahlung nach hinten
     ev = ok(c.post("/api/altersvorsorge", json={"bezeichnung": "Test-Einmal", "zahlungskonto_id": giro, "stand_datum": "2026-01-01",
         "hat_einzahlung": False, "rentenbeginn": "2026-03-02", "auszahlungsart": "einmalzahlung",
@@ -297,10 +307,12 @@ with TestClient(app) as c:
     wa.cell(zeile_mit(wa, "bezeichnung", "Test-AV"), spa["rentenbeginn"], date(2026, 9, 1))
     v = hoch(wb)
     print("   AV-Fehler:", [f for b in v["bereiche"] for f in b["fehler"]])
-    pruef("RT: Rentenbeginn per Datei: Hinweis mit Anzahl", any("Test-AV" in h and "1 automatisch" in h for h in v["hinweise"]), v["hinweise"])
+    pruef("RT: Rentenbeginn per Datei: Hinweis mit Anzahl",
+          any("Test-AV" in h and f"{len(ab_sep) - 1} automatisch" in h for h in v["hinweise"]), v["hinweise"])
     ok(c.post("/api/admin/import/ausfuehren", json={"token": v["token"]}))
     beitr, renten, _ = av_b()
-    pruef("RT: Phasen per Datei bereinigt", renten == ["2026-09-01", "2026-10-01"] and len(beitr) == 9 and "2026-10-01" not in beitr, (beitr, renten))
+    pruef("RT: Phasen per Datei bereinigt", renten == ab_sep and len(beitr) == len(alle_bis_heute) - len(ab_sep) + 1
+          and "2026-10-01" not in beitr, (beitr, renten))
     # alte Vorlage (ohne id) legt neu an
     vl = load_workbook(io.BytesIO(c.get("/api/admin/import-vorlage").content))
     pruef("RT: leere Vorlage hat alle Tabs und keine Daten", len(vl.sheetnames) == 11 and vl["Buchungen"].max_row == 1)

@@ -72,6 +72,14 @@ Befund Y (3.0): `v2_test.py` fragt den Cashflow ab dem Monatsersten ab, so wie
 es die gebuchten Einnahmen und die Jahresübersicht zählen. Vorher ab heute,
 damit fehlte vom 29. bis Monatsende das schon gebuchte Gehalt.
 
+Befund Z (3.1): Am 05.11.2026 schlugen `funktion_test.py`, `v2_test.py`,
+`v24_test.py`, `v261_test.py` und `ui2_test.py` mit unverändertem Code fehl.
+Feste Termin- und Backup-Listen hingen am Testtag. Die Reihen rechnen fällige
+Termine jetzt über `feiertage.vorheriger_werktag()` bis heute aus, `v24_test.py`
+prüft die automatischen Backups in einem Monat in der Zukunft und
+`v261_test.py` vergleicht nur die Übertragungen, die vor dem Start schon da
+waren.
+
 ## Testdatenbanken
 
 `daten/v191` wurde mit Version 1.9.1 über die Schnittstelle angelegt (Personen,

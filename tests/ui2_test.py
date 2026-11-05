@@ -113,7 +113,16 @@ with sync_playwright() as p:
     pruef("AV: Bestätigungsdialog nennt Anzahl", dialoge and f"{falsch} automatisch erzeugte" in dialoge[0], (falsch, dialoge))
     bs = [b for b in page.request.get(BASIS + "api/buchungen").json() if b.get("beschreibung", "").startswith("UI-AV")]
     beitr = sorted(b["datum"] for b in bs if b["betrag"] < 0); renten = sorted(b["datum"] for b in bs if b["betrag"] > 0)
-    pruef("AV: Beiträge ab Aug gelöscht, Renten Aug–Okt gebucht", len(beitr) == 7 and len(renten) == 3, (beitr, renten))
+    # Befund Z (3.1): Renten am 1. ab August bis heute, verschoben wie im
+    # Generator, statt fest drei (hing am Testtag)
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "finanzverwaltung"))
+    from dateutil.relativedelta import relativedelta
+    from app.core import feiertage as feiertage_modul
+    kal, renten_soll, m = feiertage_modul.bank_kalender(), [], date(2026, 8, 1)
+    while (d := feiertage_modul.vorheriger_werktag(m, kal)) <= date.today():
+        renten_soll.append(d.isoformat()); m += relativedelta(months=1)
+    pruef("AV: Beiträge ab Aug gelöscht, Renten ab Aug bis heute gebucht", len(beitr) == 7 and renten == renten_soll,
+          (beitr, renten, renten_soll))
 
     # Administration: Sparziele prüfen und lösen
     gehe("admin")

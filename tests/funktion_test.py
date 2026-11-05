@@ -11,6 +11,19 @@ from app.main import app
 
 HEUTE = date.today()
 ERG = []
+
+def monatstermine(tag: int, ab: date, bis: date) -> list[str]:
+    """Befund Z (3.1): fällige Termine einer Monatsvorlage (Tag tag, ab Monat
+    von ab) bis einschließlich bis, auf den Werktag davor verschoben, wie die
+    Generatoren sie buchen. Ersetzt feste Listen, die am Testtag hingen."""
+    from app.core import feiertage
+    kal, termine, m = feiertage.bank_kalender(), [], date(ab.year, ab.month, 1)
+    while True:
+        t = feiertage.vorheriger_werktag(date(m.year, m.month, tag), kal)
+        if t > bis:
+            return termine
+        termine.append(t.isoformat())
+        m += relativedelta(months=1)
 def pruef(name, bed, info=""):
     ERG.append((name, bool(bed)))
     print(("OK   " if bed else "FEHL ") + name + (f"  [{info}]" if info and not bed else ""))
@@ -74,7 +87,8 @@ with TestClient(app) as c:
           and v["dynamik_prozent"] is None, v)
     pruef("Tabelle: Umbuchung → Zielkonto", v["kategorie_anzeige"] == "Umbuchung → Tagesgeld" and v["sparziel_name"], v["kategorie_anzeige"])
     erzeugt = [b for b in ok(c.get("/api/buchungen")) if b["wiederkehrend_id"] == vid]
-    pruef("Generator: echte Übertragungen Aug/Sep/Okt", [b["datum"] for b in erzeugt] == ["2026-08-05", "2026-09-04", "2026-10-05"]
+    faellig = monatstermine(5, date(2026, 8, 1), HEUTE)
+    pruef("Generator: echte Übertragungen ab Aug bis heute", [b["datum"] for b in erzeugt] == faellig
           and all(b["typ"] == "Uebertragung" and b["betrag"] == 200 and b["zielkonto_id"] == tg and b["kategorie_id"] == UMB
                   and b["sparziel_id"] == sz for b in erzeugt), [(b["datum"], b["typ"]) for b in erzeugt])
     prot = ok(c.get("/api/plan-buchungen/protokoll?limit=500"))
@@ -85,7 +99,7 @@ with TestClient(app) as c:
           round(salden["Girokonto"] - salden_vorher["Girokonto"], 2) == -summe
           and round(salden["Tagesgeld"] - salden_vorher["Tagesgeld"], 2) == summe, (salden_vorher, salden))
     sz_nachher = next(b for b in ok(c.get("/api/budgets")) if b["typ"] == "sparziel")["verbrauch"]
-    pruef("Sparziel-Ist +600", round(sz_nachher - sz_vorher, 2) == 600, (sz_vorher, sz_nachher))
+    pruef("Sparziel-Ist +200 je Übertragung", round(sz_nachher - sz_vorher, 2) == 200 * len(faellig), (sz_vorher, sz_nachher))
     auto = ok(c.get("/api/buchungen?herkunft=wiederkehrend"))
     manu = ok(c.get("/api/buchungen?herkunft=manuell"))
     pruef("Herkunft: automatisch, nicht manuell", all(any(a["id"] == b["id"] for a in auto) for b in erzeugt)
@@ -96,7 +110,7 @@ with TestClient(app) as c:
     # Neustart: keine Duplikate
     with TestClient(app) as c2:
         n = len([b for b in ok(c2.get("/api/buchungen")) if b["wiederkehrend_id"] == vid])
-    pruef("Neustart: keine Duplikate", n == 3, n)
+    pruef("Neustart: keine Duplikate", n == len(faellig), n)
 
     # ── Vorschau Buchungsliste ──
     vors = [b for b in ok(c.get(f"/api/buchungen?inkl_anstehende=true&konto_id={tg}")) if b.get("virtuell") and b.get("wiederkehrend_id") == vid]
@@ -155,7 +169,10 @@ with TestClient(app) as c:
     ok(c.post("/api/wiederkehrend", json={"konto_id": neu_k, "betrag": 100, "kategorie_id": KAT["Lebensmittel/Verpflegung"], "intervall": "monatlich",
         "tag_des_monats": 5, "startdatum": "2026-09-01"}))
     svd = ok(c.get(f"/api/auswertungen/saldo-verlauf?von={von}&bis={(HEUTE + relativedelta(months=3)).isoformat()}&konto_id={neu_k}"))
-    pruef("D: kein Doppelzählen (Okt -200, Nov -300, Dez -400)", svd["konten"][0]["werte"][:3] == [-200.0, -300.0, -400.0], svd["konten"][0]["werte"])
+    # Befund Z (3.1): je Monat ab September 2026 einmal -100, relativ zu heute
+    erwartet_d = [-100.0 * ((HEUTE.year - 2026) * 12 + HEUTE.month - 9 + 1 + i) for i in range(3)]
+    pruef("D: kein Doppelzählen (je Monat ab Sep einmal -100)", svd["konten"][0]["werte"][:3] == erwartet_d,
+          (svd["konten"][0]["werte"], erwartet_d))
 
     # ── Befund F: Termin morgen in fix_offen ──
     morgen = HEUTE + timedelta(days=1)
@@ -178,7 +195,7 @@ with TestClient(app) as c:
     pruef("Anpassen: künftige Übertragung wirkt heute noch nicht", salden2["Tagesgeld"] == salden["Tagesgeld"] - 200, salden2)
     with TestClient(app) as c2:
         n = len([x for x in ok(c2.get("/api/buchungen")) if x["wiederkehrend_id"] == vid])
-    pruef("Anpassen + Neustart: kein Duplikat", n == 3, n)
+    pruef("Anpassen + Neustart: kein Duplikat", n == len(faellig), n)
     ue = ok(c.get("/api/admin/zuruecksetzen/uebersicht"))
     vs = ok(c.post("/api/admin/zuruecksetzen/vorschau", json={"arten": ["plan_buchungen"]}))
     pruef("Reset-Vorschau Plan-Buchungen zählt angepasste Übertragung", vs["zeilen"][0]["anzahl"] == 2

@@ -120,14 +120,21 @@ with TestClient(app) as c:
 
 # ── Befund O: automatische Backups nach Stichtag, je Stichtag genau eines ──
 from datetime import date
-from app.core import startup
+from dateutil.relativedelta import relativedelta
+from app.core import startup, zeit
+# Befund Z (3.1): ein Monat in der Zukunft statt fest November 2026. Am Testtag
+# im November gab es das Ultimo-Backup Oktober schon aus dem Start des Tests.
+m = date(zeit.heute().year, zeit.heute().month, 1) + relativedelta(months=2)
+ultimo_vor = m - relativedelta(days=1)
+ultimo = m + relativedelta(months=1) - relativedelta(days=1)
 erstellt = [startup.ausfuehren(t)["backup_erstellt"] for t in
-            (date(2026, 11, 3), date(2026, 11, 4), date(2026, 11, 9), date(2026, 11, 15), date(2026, 11, 20), date(2026, 11, 30))]
+            (m.replace(day=3), m.replace(day=4), m.replace(day=9), m.replace(day=15), m.replace(day=20), ultimo)]
 pruef("Befund O: Ultimo-Backup des Vormonats nur beim ersten Start, nach Stichtag benannt",
-      erstellt[0] == "finanzdaten_2026-10-31_automatisch_ultimo.db" and erstellt[1] is None and erstellt[2] is None, erstellt)
+      erstellt[0] == f"finanzdaten_{ultimo_vor.isoformat()}_automatisch_ultimo.db" and erstellt[1] is None
+      and erstellt[2] is None, erstellt)
 pruef("Befund O: Backups zum 15. und zum Ultimo je einmal",
-      erstellt[3] == "finanzdaten_2026-11-15_automatisch_15.db" and erstellt[4] is None
-      and erstellt[5] == "finanzdaten_2026-11-30_automatisch_ultimo.db", erstellt)
+      erstellt[3] == f"finanzdaten_{m.replace(day=15).isoformat()}_automatisch_15.db" and erstellt[4] is None
+      and erstellt[5] == f"finanzdaten_{ultimo.isoformat()}_automatisch_ultimo.db", erstellt)
 
 fehl = [n for n, o in ERG if not o]
 print(f"\n{len(ERG) - len(fehl)}/{len(ERG)} bestanden", fehl)
