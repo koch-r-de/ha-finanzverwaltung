@@ -176,6 +176,129 @@ neuen Darlehen); die Karte zeigt daraus den noch nicht ausgezahlten Rest.
 Bestehende Darlehen bleiben ohne Summe, bis sie über "Ändern" nachgetragen
 wird.
 
+## Neu in Version 3.1
+
+**Saldo-Korrektur als Buchung (Issue #12, Sparring 31.10. bis 05.11.2026):**
+Bis 3.0 war die Saldo-Korrektur ein Fixpunkt: Der Saldo galt ab ihrem Datum
+als der eingegebene Wert, Ist-Buchungen davor zählten nicht mehr. Das war
+bequem für den Anfangsbestand, verbarg aber jede nachgetragene ältere Buchung
+und war in keiner Auswertung zu sehen. Seit 3.1 bucht die Saldo-Korrektur die
+Differenz zwischen dem eingegebenen Kontostand und dem Saldo der App als
+eigene Ist-Buchung. `saldo()` ist damit die Summe aller Ist-Buchungen und
+Übertragungen eines Kontos, ohne Basiswert. Es gibt nur noch diese eine
+Funktion, die Tabelle `saldo_korrekturen` entfällt.
+
+*Kontostand am Ende des Tages.* Der eingegebene Wert ist der Stand nach allen
+Buchungen des Stichtags, wie auf dem Kontoauszug. Bis 3.0 war es der Stand
+vor den Buchungen des Tages. Eine Buchung, die später mit demselben Datum
+erfasst wird, ändert den Endstand, die Korrektur bleibt unverändert. Ein
+Hinweis der App wurde verworfen, eine neue Korrektur gleicht es aus.
+
+*Zwei feste, neutrale Kategorien.* „Korrekturbuchung“ und „Anfangsbestand“
+(`system_key`), ohne Typ wie „Umbuchung“ und „Darlehen“, das Vorzeichen ist
+die berechnete Differenz. Keine neue Spalte an `buchungen`. Die
+Korrekturbuchung zählt im Cashflow, weil sie Geld abbildet, das tatsächlich
+kam oder ging und nur nicht erfasst wurde. Der Anfangsbestand zählt nicht,
+sonst zeigte der Startmonat den ganzen Bestand als Einnahme. In der
+Kategorien-Auswertung, der Jahresübersicht nach Kategorien und in Budgets
+zählen beide nicht. Beide sind überall gesperrt außer in der Saldo-Korrektur
+selbst (siehe Befund AA), haben keine Unterkategorien und sind in der Suche
+der Buchungsliste als Filter wählbar. Sie entstehen nach der
+Kategorie-Umstellung 2.2, damit ältere Datenbanken alle übrigen Kategorien
+mit denselben IDs bekommen wie bisher. Eine eigene Hauptkategorie gleichen
+Namens wird übernommen und neutral (Entscheidung: übernehmen statt
+umbenennen), der Start-Status nennt das.
+
+*Ablauf.* `GET /api/saldo-korrekturen/vorschau` liefert, ob das Feld
+„Anfangsbestand“ erscheint (das Konto hat noch keinen) und ob es angehakt ist
+(keine Ist-Buchung und keine Übertragung als Quelle oder Ziel, Plan-Buchungen
+und Vorlagen zählen nicht), mit Datum und Kontostand die Differenz.
+`POST /api/saldo-korrekturen` bucht sie und lehnt ab: Datum in der Zukunft,
+Differenz 0, zweiten Anfangsbestand und eine Differenz, die sich seit der
+Vorschau geändert hat. Die Oberfläche zeigt die Differenz vor dem Buchen und
+verlangt eine Bestätigung. Die Beschreibung ist „Saldo-Korrektur auf …“ bzw.
+„Anfangsbestand …“, ein Kommentar wird angehängt. Das Datum des
+Anfangsbestands ist mit dem Eröffnungsdatum vorbelegt, das sonst in keine
+Rechnung eingeht und unverändert bleibt.
+
+*Ändern und Löschen.* Eine Korrektur ist löschbar, aber nicht änderbar, weil
+ihr Betrag die Differenz zu einem bestimmten Kontostand ist. Das Löschen der
+Buchung ist das Löschen der Saldo-Korrektur. Vorher fragt die Oberfläche mit
+Betrag und Folge („Der Saldo ändert sich ab dem … um …“), ohne
+Bestätigungsphrase, weil nur eine Buchung betroffen ist. Andere Buchungen
+löschen wie bisher. XLSX: Löschen erlaubt, das Ergebnis nennt die Saldofolge.
+Anlegen und Ändern solcher Zeilen sind Zeilenfehler. Unveränderte Zeilen
+gelten beim erneuten Import nicht als Änderung.
+
+*Daten zurücksetzen (Entscheidungen vom 05.11.2026).* „Ist-Buchungen löschen“
+nimmt Korrekturen und Anfangsbestände mit, die Vorschau nennt ihre Anzahl.
+„Konten löschen“ mit Zielkonto hängt sie um. Die Summe der Kontostände
+bleibt damit erstmals gleich, die frühere Warnung entfällt. Je Konto gibt es
+höchstens einen Anfangsbestand: Hat das Zielkonto schon einen, werden die
+übernommenen zu Korrekturbuchungen und zählen dann im Cashflow, sonst bleibt
+der früheste (Datum, Id).
+
+*Umstellung bestehender Daten* (`db._migriere_saldo_korrekturen_v31`). Je
+Konto nach Datum und Id: Betrag = eingegebener Wert minus neuer Saldo am Ende
+des Vortags, einschließlich der schon umgewandelten. Datum bleibt. Mehrere am
+selben Tag: Laut Issue gilt die mit der höchsten Id, die früheren werden zu
+Differenzen (zweite = K2 - K1). Die früheste wird Anfangsbestand, wenn davor
+keine Buchung des Kontos liegt und es noch keinen hat, sonst
+Korrekturbuchung. Betrag 0: keine Buchung, der Start-Status nennt den Schritt.
+Konten ohne Korrektur bleiben unverändert. Vorher ein Backup („vor Umstellung
+der Saldo-Korrekturen 3.1“), danach wird die Tabelle gelöscht. Der Start-Status
+nennt jede Korrektur und vergleicht den Ist-Saldo jedes Kontos an jedem
+Buchungs- und Korrekturtag vorher und nachher. Die Umstellung läuft, solange
+die Tabelle existiert, also auch nach dem Einspielen eines Backups von 3.0
+und bei verschlüsselter Datenbank erst nach dem Entsperren.
+
+*Abweichung vom Issue: fällige Plan-Buchungen (Entscheidung vom 05.11.2026).*
+Das Issue nahm an, dass Plan-Buchungen vor einer alten Korrektur nur die
+Prognose ändern. Tatsächlich liegen sie immer in der Vergangenheit, weil
+Korrekturen seit 2.0 nie künftig sind, und der Start wandelt sie gleich nach
+der Umstellung in Ist-Buchungen um (`plan_buchungen.umwandeln_faellige`). Mit
+reinem Ist-Saldo hätte sich der Saldo ab der Plan-Buchung geändert. Die
+Umstellung rechnet fällige Plan-Buchungen deshalb wie Ist und zählt sie auch
+bei der Frage, ob davor schon etwas gebucht ist. Der Start-Status nennt sie
+je Konto. Gefunden mit dem Upgrade-Test.
+
+**Befund AB (gefunden beim Prüfen vor dem Bau, besteht seit Einführung der
+Saldo-Korrektur):** Bei mehreren Korrekturen am selben Tag sortierte `saldo()`
+nur nach Datum (`ORDER BY datum DESC LIMIT 1`). SQLite lieferte damit
+tatsächlich die zuerst angelegte, mit sqlite3 und sqlcipher3 nachgeprüft. Eine
+zweite Korrektur am selben Tag wurde still übergangen. Die neue
+Saldo-Korrektur kennt das Problem nicht mehr. Für die Umstellung gilt auf
+Wunsch des Anwenders die Regel des Issues (höchste Id). Bei betroffenen Konten
+ändert sich der Ist-Saldo ab diesem Tag um die Differenz, der Start-Status
+nennt Konto, Datum und Betrag.
+
+**Befund AA (gefunden beim Prüfen vor dem Bau, besteht seit 1.10):** Die
+Kategorie „Umbuchung“ war nur bei Vorlagen gesperrt. Buchungsformular,
+„Ändern“, Schnellbuchung, Siri, XLSX-Import, Kategorie-Regeln, Budgets,
+Altersvorsorge-Verträge und Siri-Favoriten nahmen sie an. Eine Ist-Buchung
+darin war neutral (Vorzeichen wie eingegeben) und zählte im Cashflow, nicht
+aber in den Kategorien. Seit 3.1 prüft der Kern zentral
+(`buchungen.GESPERRTE_KATEGORIEN`, `kategorie_sperre_pruefen`), dieselbe
+Sperre gilt für Korrekturbuchung und Anfangsbestand. `/api/kategorien` und die
+Stammdaten der Schnellbuchung liefern das Feld `gesperrt`, die Auswahlfelder
+lassen sie aus (`data-ohne-gesperrte`). Siri behandelt sie als unbekannt,
+alte Regeln auf sie übergeht der Vorschlag. Bestehende Buchungen bleiben
+unverändert. Gegenprobe mit dem Code von 3.0 in `v31_test.py`.
+
+**Befund Z (gefunden beim Testlauf am 05.11.2026, nur Tests):** `funktion`,
+`v2`, `v24`, `v261` und `ui2` schlugen mit unverändertem Code fehl. Feste
+Listen von Terminen und Backups hingen am Testtag (Umbuchungsvorlage zum 5.,
+Rentenbeginn, Ultimo-Backup Oktober). Die Reihen rechnen fällige Termine jetzt
+über `feiertage.vorheriger_werktag()` bis heute aus.
+
+*Tests.* Neu `v31_test.py` (Umstellung mit Altfällen und Pflichtvergleich der
+Salden, Vorschau und Buchen, alle Sperren, Cashflow und Auswertungen, XLSX,
+Zurücksetzen, Gegenprobe mit 3.0) und `ui31_test.py` (Block
+„Saldo-Korrektur“, Buchungsliste, Auswahlfelder, Schnellbuchung direkt und
+eingebettet). `upgrade_test.py` prüft jetzt 3.0 nach 3.1, auch mit
+verschlüsselter Datenbank. Die Hilfebilder sind neu erzeugt, die Demo-Daten
+setzen den Anfangsbestand nach der Darlehens-Auszahlung.
+
 ## Neu in Version 3.0
 
 **Sperre und Verschlüsselung (Issue #5, Wunsch des Anwenders):** Zwei

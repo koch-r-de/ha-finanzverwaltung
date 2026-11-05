@@ -72,7 +72,16 @@ Entwicklung immer ein eigenes Datenverzeichnis setzen. `FINANZAPP_FESTE_ZEIT`
   `date.today()` oder `datetime.now()`. Ein Test prüft das.
 - **Vorzeichen:** Ausgaben negativ, Einnahmen positiv. Eingegeben wird positiv,
   das Vorzeichen kommt aus dem Typ der Kategorie (Typ der obersten
-  Oberkategorie). Neutrale Wurzeln: „Darlehen“, „Umbuchung“.
+  Oberkategorie). Neutrale Wurzeln: „Darlehen“, „Umbuchung“, seit 3.1
+  „Korrekturbuchung“ und „Anfangsbestand“.
+- **Saldo** (seit 3.1): Summe aller Ist-Buchungen und Übertragungen, kein
+  Fixpunkt. Die Saldo-Korrektur bucht die Differenz zum Kontostand am Ende des
+  Stichtags in „Korrekturbuchung“ bzw. „Anfangsbestand“.
+- **Gesperrte Kategorien** (`buchungen.GESPERRTE_KATEGORIEN`): „Umbuchung“,
+  „Korrekturbuchung“, „Anfangsbestand“ samt Unterkategorien. Neue Schreibwege
+  für Buchungen, Vorlagen, Regeln, Budgets oder Verträge prüfen mit
+  `kategorie_sperre_pruefen` bzw. `gesperrte_kategorien`, Auswahlfelder
+  bekommen `data-ohne-gesperrte`.
 - **Buchungstypen:** `Ist`, `Plan`, `Uebertragung`. Übertragungen zwischen
   eigenen Konten zählen in keinem Cashflow und in keiner Kategorie.
 - **Prognose:** Künftige Termine aus Vorlagen, Darlehen und Altersvorsorge

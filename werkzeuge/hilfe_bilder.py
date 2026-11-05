@@ -55,8 +55,6 @@ def demo_daten_anlegen():
         konto(name="Haushaltskasse", typ="Bargeld", eroeffnungsdatum="2025-01-01")
         kk = konto(name="Kreditkarte", typ="Kreditkarte", eroeffnungsdatum="2025-01-01", in_gesamtsaldo=False)
         kat = {k["name"]: k["id"] for k in ok(c.get("/api/kategorien"))}
-        for k, d, s in [(giro, "2025-12-31", 3150), (giro_b, "2025-12-31", 1870), (tg, "2025-12-31", 8400)]:
-            ok(c.post("/api/saldo-korrekturen", json={"konto_id": k, "datum": d, "saldo": s}))
         wk = lambda **v: ok(c.post("/api/wiederkehrend", json=v))
         wk(konto_id=giro, betrag=2650, kategorie_id=kat["Gehalt & Lohn"], beschreibung="Gehalt Anna", intervall="monatlich",
            tag_des_monats=28, startdatum="2026-01-01", person_id=anna)
@@ -111,6 +109,11 @@ def demo_daten_anlegen():
                                                "rente_garantiert_betrag": 190, "rente_voraussichtlich_betrag": 240}))
         ok(c.post("/api/regeln", json={"muster": "Tankstelle", "kategorie_id": kat["Kraftstoff"], "prioritaet": 100}))
         ok(c.post("/api/regeln", json={"muster": "Wochenmarkt", "kategorie_id": kat["Lebensmittel/Verpflegung"], "prioritaet": 100}))
+        # Kontostände zum Jahresende 2025 als Anfangsbestand. Seit 3.1 (#12) eine
+        # Buchung mit der Differenz zum Saldo an diesem Tag, deshalb erst nach
+        # allen Buchungen davor (Darlehens-Auszahlung 2025). Bis 3.0 ein Fixpunkt.
+        for k, d, s in [(giro, "2025-12-31", 3150), (giro_b, "2025-12-31", 1870), (tg, "2025-12-31", 8400)]:
+            ok(c.post("/api/saldo-korrekturen", json={"konto_id": k, "datum": d, "saldo": s, "anfangsbestand": True}))
 
 
 def freier_port() -> int:

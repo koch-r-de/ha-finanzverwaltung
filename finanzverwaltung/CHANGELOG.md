@@ -2,6 +2,14 @@
 
 Ausführlich zu jeder Version: DOCS.md, Abschnitte „Neu in Version …“.
 
+## 3.1
+
+- Neu: Die Saldo-Korrektur bucht die Differenz zum eingegebenen Kontostand als Buchung in den festen Kategorien „Korrekturbuchung“ bzw. „Anfangsbestand“, nach einer Vorschau mit Bestätigung (Issue #12). Der Kontostand gilt am Ende des Tages. Der Fixpunkt entfällt.
+- Korrekturen sind nicht änderbar, nur löschbar, mit Rückfrage zur Saldofolge. Die Korrekturbuchung zählt im Cashflow, der Anfangsbestand nicht, beide nicht in Kategorien und Budgets.
+- Update: Alte Saldo-Korrekturen werden einmalig umgewandelt (Backup vorher, jeder Schritt im Start-Status, Salden bleiben gleich). Ausnahme: mehrere am selben Tag, dort gilt jetzt die zuletzt angelegte (Befund AB).
+- Korrektur: „Umbuchung“ war nur bei Vorlagen gesperrt (Befund AA).
+- Tests: Testerwartungen vom Testtag gelöst (Befund Z), neue Reihen v31 und ui31, Upgrade-Test von 3.0.
+
 ## 3.0
 
 - Neu: Sperre mit PIN, Passwort oder Muster, Freigabeliste der Home-Assistant-Benutzer, Wartezeit nach Fehlversuchen, automatische Sperre. Wirkt im Server auf alle Endpunkte. Voraussetzung: Option `herkunft_pruefen` auf `sperren`.

@@ -51,6 +51,7 @@ OBERFLAECHE = [
     ("ui263", "ui263_test.py", "v191", []),
     ("ui27", "ui27_test.py", "v191", []),
     ("ui30", "ui30_test.py", "v191", []),
+    ("ui31", "ui31_test.py", "ausgabe:uibasis", []),
 ]
 
 # Update von der Vorversion (seit 3.0 in dieser Liste): Code der Vorversion aus

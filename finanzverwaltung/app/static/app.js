@@ -909,16 +909,16 @@ document.getElementById("form-saldo-korrektur").addEventListener("submit", async
   const param = new URLSearchParams({ konto_id: d.konto_id, datum: d.datum, saldo: d.saldo, anfangsbestand: ab });
   try {
     const v = await api(`/saldo-korrekturen/vorschau?${param}`);
-    const datum = new Date(v.datum).toLocaleDateString("de-DE");
+    const datum = new Date(v.datum).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
     const text = document.getElementById("sk-vorschau-text");
     if (Math.abs(v.differenz) < 0.005) {
       text.textContent = `Der Saldo von „${v.konto}“ am Ende des ${datum} ist schon ${euro(v.saldo_app)}. Es wird nichts gebucht.`;
-      document.getElementById("sk-buchen").hidden = true;
+      document.getElementById("sk-buchen").style.display = "none";
     } else {
       text.textContent = `Saldo von „${v.konto}“ am Ende des ${datum} laut App: ${euro(v.saldo_app)}. ` +
         `Dein Kontostand: ${euro(v.kontostand)}. Gebucht wird die Differenz ${euro(v.differenz)} ` +
         `als „${ab ? "Anfangsbestand" : "Korrekturbuchung"}“.`;
-      document.getElementById("sk-buchen").hidden = false;
+      document.getElementById("sk-buchen").style.display = "";
     }
     SK_VORSCHAU = { ...d, anfangsbestand: ab, differenz: v.differenz };
     document.getElementById("sk-vorschau").hidden = false;
@@ -1025,7 +1025,7 @@ async function loescheBuchung(id) {
   const kat = KATEGORIEN.find((k) => k.id === b.kategorie_id);
   const frage = kat?.korrektur
     ? `${kat.system_key === "anfangsbestand" ? "Anfangsbestand" : "Saldo-Korrektur"} löschen? ` +
-      `Der Saldo ändert sich ab dem ${new Date(b.datum).toLocaleDateString("de-DE")} um ${euro(-b.betrag)}.`
+      `Der Saldo ändert sich ab dem ${new Date(b.datum).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })} um ${euro(-b.betrag)}.`
     : "Buchung wirklich löschen?";
   if (!confirm(frage)) return;
   await api(`/buchungen/${id}`, { method: "DELETE" });

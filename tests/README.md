@@ -57,8 +57,10 @@ Für die Oberflächentests startet das Skript den Server auf Port 8935.
 | `ui263_test.py` | 2.6.3: Schnellbuchung (Issue #4 Eingabetaste, Befund R, Vorauswahl der Kategorie, alle Felder sichtbar) | `daten/v191` |
 | `ui26_test.py` | 2.6: Bundesland-Abfrage, Hinweise, Symbol in der Liste, Dialoge | `daten/v191` ohne gewähltes Bundesland |
 | `v30_test.py` | 3.0: Sperre und Verschlüsselung (Gegenprobe ohne Schutz mit dem Code von 2.7, Klartexte, Schlüssel, alle Endpunkte ohne Code, Fehlversuche mit eingefrorener Uhr, Stapel über Neustart, Klärliste, Wiederherstellungsschlüssel, Passphrase ändern, Downloads, XLSX mit Kennwort) | `daten/v21`, Code von 2.7 als viertes Argument |
+| `v31_test.py` | 3.1: Saldo-Korrektur als Buchung (#12): Umstellung alter Korrekturen mit Altfällen (zwei am selben Tag, Differenz 0, eigene Kategorie „Anfangsbestand“) und Pflichtvergleich der Ist-Salden, Vorschau und Buchen, Feld „Anfangsbestand“, Sperren an allen Wegen (auch Befund AA), Cashflow, Kategorien, Budgets, XLSX, Zurücksetzen, Gegenprobe mit dem Code von 3.0 | `daten/v21` plus Altfälle, Code von 3.0 als viertes Argument |
+| `ui31_test.py` | 3.1: Block „Saldo-Korrektur“ (Anfangsbestand, Vorschau, Differenz 0, Zukunft), Buchungsliste ohne „Ändern“ bei Korrekturen, Rückfrage beim Löschen, Auswahlfelder ohne gesperrte Kategorien, Schnellbuchung direkt und eingebettet wie im Panel | Ergebnis von `ui_vorbereiten.py` |
 | `ui30_test.py` | 3.0: Oberfläche von Sperre und Verschlüsselung, startet den Server selbst (Neustarts, Herkunftsprüfung `sperren`), Ingress-Header über Playwright | `daten/v191` |
-| `upgrade_test.py` | Update einer Datenbank mit Vergleich aller Tabellen, seit 3.0 auch in `alle_tests.py` (2.7 nach 3.0 mit Ein- und Ausschalten der Verschlüsselung) | beliebig, siehe unten |
+| `upgrade_test.py` | Update einer Datenbank mit Vergleich aller Tabellen, seit 3.0 auch in `alle_tests.py`. Seit 3.1: 3.0 nach 3.1 mit Umstellung der Saldo-Korrekturen (Ist-Salden vorher und nachher unabhängig vom Programmcode gerechnet), auch auf einer mit 3.0 verschlüsselten Datenbank | beliebig, siehe unten |
 | `v30_messung.py` | keine Testreihe: Dauer von Einschalten, Entsperren und Abfragen mit und ohne Verschlüsselung | `daten/v21` plus erfundene Buchungen |
 
 Einzeln aufrufen: `python3 tests/v24_test.py finanzverwaltung <quelle> <ziel> [weitere]`.
@@ -88,8 +90,11 @@ vier Konten, Vorlagen, Sparziel, Darlehen, Altersvorsorge). `daten/v20` und
 erfunden, Backup-Listen sind geleert.
 
 `alle_tests.py` holt den Code der Vorversion seit 3.0 selbst per
-`git archive` aus dem Commit in `VORVERSION` nach `tests/ausgabe/vorversion`
-und nutzt ihn für `v30_test.py` und den Upgrade-Test. In einem flachen Klon
+`git archive` nach `tests/ausgabe/vorversion_<version>`: seit 3.1 den Stand
+von 3.0 (`VORVERSION`) für `v31_test.py` und den Upgrade-Test, den Stand von
+2.7 (`VORVERSION_27`) weiter für die Gegenprobe in `v30_test.py`. Diese
+vergleicht seit 3.1 ohne alte Saldo-Korrekturen, ohne die beiden neuen
+Systemkategorien und ohne die Felder `gesperrt` und `korrektur`. In einem flachen Klon
 ohne diesen Commit meldet es beide als übersprungen. `v30_test.py` und
 `ui30_test.py` brauchen die Pakete aus `requirements-docker.txt`
 (`sqlcipher3-wheels`, `cryptography`, `argon2-cffi`, `msoffcrypto-tool`).

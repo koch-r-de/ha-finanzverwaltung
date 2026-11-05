@@ -1,5 +1,5 @@
 # Hilfe zur Finanzverwaltung
-Programmversion: 3.0
+Programmversion: 3.1
 
 ## Erste Schritte
 <!-- kapitel: erste-schritte -->
@@ -31,7 +31,7 @@ In der Hilfe findest du links das Inhaltsverzeichnis. Oben kannst du nach Begrif
 <!-- stichworte: Einrichtung, Anfangsbestand -->
 
 1. Lege unter „Konten“ deine Konten an, zum Beispiel Girokonto und Tagesgeld. Siehe [Konto anlegen oder ändern](#konten.anlegen).
-2. Trage für jedes Konto den aktuellen Kontostand als Saldo-Korrektur ein. Siehe [Kontostand festlegen](#konten.saldo-korrektur).
+2. Trage für jedes Konto den Kontostand als „Anfangsbestand“ ein, im Block „Saldo-Korrektur“. Siehe [Kontostand festlegen](#konten.saldo-korrektur).
 3. Lege unter „Wiederkehrend“ deine festen Zahlungen an: Gehalt, Miete, Versicherungen. Siehe [Vorlage anlegen](#wiederkehrend.anlegen).
 4. Erfasse ab jetzt deine Ausgaben unter „Buchungen“ oder unterwegs mit der Schnellbuchung. Siehe [Buchung erfassen](#buchungen.erfassen).
 5. Wenn du magst: Lege Budgets an, zum Beispiel für Lebensmittel. Siehe [Budget anlegen](#budgets.anlegen).
@@ -121,25 +121,34 @@ Zum Ändern klickst du in der Tabelle „Alle Konten“ bei dem Konto auf „Än
 <!-- kapitel: konten.saldo-korrektur -->
 <!-- stichworte: Saldo-Korrektur, Anfangsbestand, Kontostand -->
 
-**Wofür?** Du sagst dem Programm, welcher Stand an einem Tag auf dem Konto war. So stimmt der Stand, auch wenn du nicht alle alten Buchungen erfasst hast.
+**Wofür?** Du sagst dem Programm, welcher Stand am Ende eines Tages auf dem Konto war, zum Beispiel laut Kontoauszug. Das Programm bucht die Differenz zu seinem eigenen Saldo als Korrekturbuchung. Beim ersten Mal legst du so den Anfangsbestand eines Kontos fest.
 
 **So geht's**
 
 1. Öffne „Konten“ und gehe zum Block „Saldo-Korrektur“.
 2. Wähle das „Konto“.
-3. Wähle das „Datum“. Vorbelegt ist heute.
-4. Trag bei „Saldo (€)“ den Kontostand ein, wie er auf dem Kontoauszug steht.
-5. Schreib bei Bedarf einen „Kommentar“ dazu.
-6. Klicke auf „Korrektur anlegen“.
+3. Hat das Konto noch keinen Anfangsbestand, siehst du das Feld „Anfangsbestand“. Hake es an, wenn du den ersten Stand des Kontos einträgst. Bei einem Konto ohne Buchungen ist es schon angehakt.
+4. Wähle das „Datum“. Vorbelegt ist heute, beim Anfangsbestand das Eröffnungsdatum des Kontos.
+5. Trag bei „Kontostand (€)“ den Stand ein, wie er am Ende dieses Tages auf dem Kontoauszug steht.
+6. Schreib bei Bedarf einen „Kommentar“ dazu.
+7. Klicke auf „Differenz prüfen“. Das Programm zeigt seinen Saldo und die Differenz, die es buchen würde.
+8. Stimmt alles, klicke auf „Korrektur buchen“.
 
 **Gut zu wissen**
 
 <!-- hinweis: konten.saldo-korrektur -->
-Die Korrektur setzt den Kontostand ab diesem Datum fest. Buchungen mit einem früheren Datum ändern den Stand danach nicht mehr. Ein Datum in der Zukunft ist nicht möglich.
+Trag den Kontostand am Ende des Tages ein, nach allen Buchungen dieses Tages. Das Programm bucht die Differenz zu seinem Saldo als Korrekturbuchung. Ein Datum in der Zukunft ist nicht möglich.
 <!-- /hinweis -->
 
-- Buchungen am selben Tag rechnet das Programm zum eingetragenen Stand hinzu. Trag also den Stand vor den Buchungen dieses Tages ein.
-- Für den Start reicht eine Korrektur je Konto mit dem heutigen Stand.
+- Ist die Differenz null, bucht das Programm nichts.
+- Die Buchung heißt „Saldo-Korrektur auf …“ bzw. „Anfangsbestand …“, dein Kommentar wird angehängt. Sie steht in der Kategorie „Korrekturbuchung“ bzw. „Anfangsbestand“.
+- Eine Korrektur lässt sich nicht ändern, nur löschen. Hast du dich vertan, lösche sie in der Buchungsliste und leg eine neue an. Vor dem Löschen nennt das Programm, um wie viel sich der Saldo ab welchem Tag ändert.
+- Erfasst du nach der Korrektur noch eine Buchung mit demselben Datum, ändert sie den Stand am Ende dieses Tages. Die Korrektur bleibt, wie sie ist. Eine neue Saldo-Korrektur gleicht das aus.
+- Buchungen am Tag des Anfangsbestands, die du später erfasst, kommen zum Anfangsbestand hinzu. Er wirkt dann wie der Stand vor diesen Buchungen.
+- Jedes Konto hat höchstens einen Anfangsbestand. Löschst du ihn, erscheint das Feld wieder.
+- Korrekturbuchungen zählen im Cashflow als Einnahme oder Ausgabe, der Anfangsbestand nicht. In der Auswertung nach Kategorien und in Budgets zählen beide nicht.
+- Die Kategorien „Korrekturbuchung“ und „Anfangsbestand“ kannst du nur hier buchen. In der Suche der Buchungsliste kannst du nach ihnen filtern.
+- Für den Start reicht ein Anfangsbestand je Konto mit dem heutigen Stand.
 
 **Siehe auch:** [Einrichten in fünf Schritten](#erste-schritte.einrichten)
 
@@ -1319,8 +1328,9 @@ Fest vorgegebene Kategorien (zum Beispiel Einnahmen, Ausgaben, Altersvorsorge, R
 - Eine neue Kategorie ist Einnahme oder Ausgabe, je nachdem, unter welcher obersten Kategorie sie steht.
 - Verschiebst du eine Kategorie von den Ausgaben zu den Einnahmen, behalten ihre Buchungen ihr Vorzeichen. Prüfe danach die Vorzeichen.
 - Eine Kategorie mit Buchungen oder Unterkategorien lässt sich nicht löschen.
+- „Umbuchung“, „Korrekturbuchung“ und „Anfangsbestand“ kannst du in Buchungen, Vorlagen, Regeln, Budgets und Verträgen nicht wählen. Übertragungen bekommen „Umbuchung“ von selbst, die beiden anderen entstehen nur über die Saldo-Korrektur. Unter „Korrekturbuchung“ und „Anfangsbestand“ gibt es keine Unterkategorien.
 
-**Siehe auch:** [Vorzeichen prüfen](#admin.vorzeichen)
+**Siehe auch:** [Vorzeichen prüfen](#admin.vorzeichen), [Kontostand festlegen](#konten.saldo-korrektur)
 
 ### Inflationsfaktor
 <!-- kapitel: admin.inflationsfaktor -->
@@ -1369,6 +1379,7 @@ Kategorien stehen als Pfad in der Datei, zum Beispiel Ausgaben > Wohnen > Strom.
 - Grau hinterlegte Spalten dienen nur zur Information.
 - Die verborgene Spalte _pruefwert erkennt, ob ein Eintrag nach dem Export in der App geändert wurde. Dann meldet die Vorschau einen Konflikt. Exportiere in dem Fall neu.
 - Konten lassen sich per Datei nicht löschen. Personen werden beim Löschen nur deaktiviert.
+- Saldo-Korrekturen und Anfangsbestände lassen sich per Datei nur löschen, nicht anlegen oder ändern. Die Vorschau nennt, um wie viel sich der Saldo ändert.
 - „Leere Vorlage (xlsx)“ liefert eine Datei nur mit Überschriften.
 - Für eine CSV-Datei wählst du vorher den „Bereich (nur für CSV nötig)“.
 - Eine Vorschau bleibt zehn Minuten gültig.
@@ -1903,7 +1914,7 @@ Das Fragezeichen neben jeder Auswahl zeigt kurz, was gelöscht wird. Von dort ko
 **Gut zu wissen**
 
 <!-- hinweis: zuruecksetzen.konten-leeren -->
-Löscht alle Buchungen und Saldo-Korrekturen der gewählten Konten. Die Konten bleiben und stehen danach auf 0 €. Übertragungen zu anderen Konten werden mitgelöscht und ändern dort den Stand.
+Löscht alle Buchungen der gewählten Konten, auch Saldo-Korrekturen und Anfangsbestände. Die Konten bleiben und stehen danach auf 0 €. Übertragungen zu anderen Konten werden mitgelöscht und ändern dort den Stand.
 <!-- /hinweis -->
 
 - Hängen am Konto noch Vorlagen, Darlehen oder Altersvorsorge, buchen diese künftige Termine weiter.
@@ -1925,12 +1936,13 @@ Löscht alle Buchungen und Saldo-Korrekturen der gewählten Konten. Die Konten b
 **Gut zu wissen**
 
 <!-- hinweis: zuruecksetzen.konten-loeschen -->
-Entfernt die gewählten Konten. Bei einer Teilauswahl wählst du ein Zielkonto, auf das Buchungen, Vorlagen und Verträge umgestellt werden. Saldo-Korrekturen der gelöschten Konten gehen verloren.
+Entfernt die gewählten Konten. Bei einer Teilauswahl wählst du ein Zielkonto, auf das Buchungen, Vorlagen und Verträge umgestellt werden, auch Saldo-Korrekturen und Anfangsbestände.
 <!-- /hinweis -->
 
 - Übertragungen, die danach von einem Konto auf dasselbe laufen würden, entfallen.
 - Umbuchungs-Vorlagen mit gleichem Konto und Zielkonto werden deaktiviert, nicht gelöscht.
-- Weil Saldo-Korrekturen wegfallen, kann sich die Summe deiner Kontostände ändern. Der Bestätigungsdialog nennt den Betrag.
+- Die Summe deiner Kontostände bleibt gleich.
+- Ein Konto hat höchstens einen Anfangsbestand. Hat das Zielkonto schon einen, werden die übernommenen zu Korrekturbuchungen und zählen dann im Cashflow. Sonst bleibt der früheste ein Anfangsbestand. Der Bestätigungsdialog nennt die Anzahl.
 - Löschst du alle Konten, musst du auch „Wiederkehrende Buchungen (Vorlagen)“ und „Altersvorsorge“ anhaken.
 
 **Siehe auch:** [Konten leeren](#zuruecksetzen.konten-leeren)
@@ -1950,7 +1962,7 @@ Entfernt die gewählten Konten. Bei einer Teilauswahl wählst du ein Zielkonto, 
 **Gut zu wissen**
 
 <!-- hinweis: zuruecksetzen.ist-buchungen -->
-Löscht alle Ist-Buchungen und Übertragungen bis einschließlich des gewählten Datums, auch automatisch gebuchte. Spätere Buchungen und Plan-Buchungen bleiben.
+Löscht alle Ist-Buchungen und Übertragungen bis einschließlich des gewählten Datums, auch automatisch gebuchte, Saldo-Korrekturen und Anfangsbestände. Spätere Buchungen und Plan-Buchungen bleiben.
 <!-- /hinweis -->
 
 - Gelöschte automatische Buchungen entstehen nicht neu. Künftige Termine werden weiter gebucht.
@@ -2013,7 +2025,7 @@ Kurze Anleitungen für häufige Aufgaben. Der Verweis am Ende führt zum ausfüh
 ### … meinen Kontostand an den Kontoauszug anpassen?
 <!-- kapitel: rezepte.kontostand -->
 
-Öffne „Konten“, trag im Block „Saldo-Korrektur“ Konto, Datum und Stand laut Auszug ein und klicke auf „Korrektur anlegen“. Ausführlich: [Kontostand festlegen](#konten.saldo-korrektur)
+Öffne „Konten“, trag im Block „Saldo-Korrektur“ Konto, Datum und den Stand am Ende des Tages laut Auszug ein, klicke auf „Differenz prüfen“ und dann auf „Korrektur buchen“. Ausführlich: [Kontostand festlegen](#konten.saldo-korrektur)
 
 ### … eine monatliche Sparrate einrichten?
 <!-- kapitel: rezepte.sparrate -->
@@ -2119,7 +2131,7 @@ Lösche das Konto unter Administration bei „Daten zurücksetzen“ mit „Kont
 
 **Saldo:** Der Stand eines Kontos.
 
-**Saldo-Korrektur:** Ein festgelegter Kontostand an einem Tag.
+**Saldo-Korrektur:** Eine Buchung mit der Differenz zwischen deinem Kontostand am Ende eines Tages und dem Saldo im Programm, in der Kategorie „Korrekturbuchung“ oder „Anfangsbestand“.
 
 **Sparquote:** Der Anteil der Einnahmen, der nach allen Ausgaben übrig bleibt.
 
