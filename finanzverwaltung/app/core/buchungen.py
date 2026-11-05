@@ -1,12 +1,11 @@
 """
 Buchungsengine: Konten, Kategorien, Buchungen und Saldo-Berechnung.
 
-Fachliche Kernregel (Saldo-Korrektur):
-Eine Saldo-Korrektur wirkt fix ab ihrem Datum. Wird später eine
-Ist-Buchung VOR einer bestehenden Korrektur nachgetragen, ändert das
-den Saldo AB dem Korrekturdatum nicht - die Korrektur bleibt die
-Basis. Buchungen vor der jüngsten (zum Stichtag gültigen) Korrektur
-fließen daher nicht mehr in die Berechnung ein.
+Saldo (seit 3.1, #12): Summe aller Ist-Buchungen und Übertragungen eines
+Kontos bis zum Stichtag, ohne Basiswert. Die Saldo-Korrektur ist eine
+Buchung in der Kategorie „Korrekturbuchung“ bzw. „Anfangsbestand“ mit der
+Differenz zum eingegebenen Kontostand (siehe saldo_korrektur_vorschau). Bis
+3.0 war sie ein Fixpunkt: Buchungen vor der jüngsten Korrektur zählten nicht.
 
 Übertragungen: gespeichert als eine Zeile (konto_id = Quelle,
 zielkonto_id = Ziel, betrag = positiver Übertragungsbetrag). Für die
@@ -313,16 +312,6 @@ def buchung_loeschen(conn, buchung_id: int) -> None:
     conn.commit()
 
 
-def saldo_korrektur_anlegen(conn, *, konto_id: int, datum: date, saldo: float,
-                             kommentar: str = None) -> int:
-    cur = conn.execute(
-        "INSERT INTO saldo_korrekturen (konto_id, datum, saldo, kommentar) VALUES (?, ?, ?, ?)",
-        (konto_id, _iso(datum), saldo, kommentar),
-    )
-    conn.commit()
-    return cur.lastrowid
-
-
 def _summe(conn, spalte: str, konto_id: int, typen: tuple, ab_iso: str, bis_iso: str) -> float:
     platzhalter = ",".join("?" * len(typen))
     row = conn.execute(
@@ -335,8 +324,8 @@ def _summe(conn, spalte: str, konto_id: int, typen: tuple, ab_iso: str, bis_iso:
 
 def saldo(conn, konto_id: int, stichtag: Optional[date] = None, inkl_plan: bool = False) -> float:
     """
-    Saldo eines Kontos zu einem Stichtag (Standard: heute) - siehe
-    Modul-Docstring zur Saldo-Korrektur-Regel.
+    Saldo eines Kontos am Ende eines Stichtags (Standard: heute), siehe
+    Modul-Docstring.
 
     inkl_plan=False (Standard): nur tatsächlich gebuchte Ist-Buchungen -
         das ist der "echte", aktuelle Kontostand.
@@ -348,45 +337,12 @@ def saldo(conn, konto_id: int, stichtag: Optional[date] = None, inkl_plan: bool 
     bis_iso = _iso(stichtag)
     typen = ("Ist", "Plan") if inkl_plan else ("Ist",)
 
-    korrektur = conn.execute(
-        """SELECT datum, saldo FROM saldo_korrekturen
-           WHERE konto_id = ? AND datum <= ?
-           ORDER BY datum DESC LIMIT 1""",
-        (konto_id, bis_iso),
-    ).fetchone()
-
-    if korrektur:
-        ab_iso = korrektur["datum"]
-        basis_saldo = korrektur["saldo"]
-    else:
-        ab_iso = "0001-01-01"
-        basis_saldo = 0.0
-
+    ab_iso = "0001-01-01"
     ist = _summe(conn, "konto_id", konto_id, typen, ab_iso, bis_iso)
     abgang = _summe(conn, "konto_id", konto_id, ("Uebertragung",), ab_iso, bis_iso)
     zugang = _summe(conn, "zielkonto_id", konto_id, ("Uebertragung",), ab_iso, bis_iso)
 
-    return round(basis_saldo + ist - abgang + zugang, 2)
-
-
-def summe_kategorie(conn, konto_id: int, kategorie_id: int, bis: date, inkl_plan: bool = True) -> float:
-    """
-    Kumulierte Summe EINER Kategorie auf einem Konto bis einschließlich
-    eines Stichtags - anders als saldo() bewusst OHNE Saldo-Korrektur-
-    Basis, da eine Kategorie-Teilsumme kein "Kontostand" im eigentlichen
-    Sinn ist, sondern eine reine Teilmenge der Buchungen. Grundlage für
-    den kategorie-gefilterten Saldo-Verlauf in den Auswertungen (bewusste
-    Abweichung von der echten Kontostand-Semantik, siehe
-    auswertungen.saldo_verlauf).
-    """
-    typen = ("Ist", "Plan") if inkl_plan else ("Ist",)
-    platzhalter = ",".join("?" * len(typen))
-    row = conn.execute(
-        f"""SELECT COALESCE(SUM(betrag), 0) FROM buchungen
-            WHERE konto_id = ? AND kategorie_id = ? AND typ IN ({platzhalter}) AND datum <= ?""",
-        (konto_id, kategorie_id, *typen, _iso(bis)),
-    ).fetchone()
-    return round(row[0], 2)
+    return round(ist - abgang + zugang, 2)
 
 
 def sql_in(spalte: str, menge, bedingungen: list, params: list) -> None:
@@ -406,7 +362,9 @@ def cashflow(conn, von: date, bis: date, inkl_plan: bool = False,
              person_id: Optional[int] = None, konto_ids=None, kategorie_ids=None):
     """
     Einnahmen/Ausgaben gruppiert nach Monat. Übertragungen werden
-    ignoriert (kein Cashflow-Effekt). inkl_plan=True zieht zusätzlich
+    ignoriert (kein Cashflow-Effekt), ebenso der Anfangsbestand (seit 3.1,
+    #12). Korrekturbuchungen zählen je nach Vorzeichen als Einnahme oder
+    Ausgabe. inkl_plan=True zieht zusätzlich
     bereits erzeugte Plan-Buchungen heran - für Prognosen. konto_id,
     kategorie_id und person_id filtern optional auf ein einzelnes Konto,
     eine einzelne Kategorie bzw. eine Person (über das Konto, siehe
@@ -428,6 +386,10 @@ def cashflow(conn, von: date, bis: date, inkl_plan: bool = False,
         params.append(person_id)
     sql_in("konto_id", konto_ids, bedingungen, params)
     sql_in("kategorie_id", kategorie_ids, bedingungen, params)
+    anfangsbestand = [k for k, key in korrektur_kategorien(conn).items() if key == "anfangsbestand"]
+    if anfangsbestand:
+        bedingungen.append(f"kategorie_id NOT IN ({','.join('?' * len(anfangsbestand))})")
+        params.extend(anfangsbestand)
     rows = conn.execute(
         f"""SELECT strftime('%Y-%m', datum) AS monat,
                   SUM(CASE WHEN betrag > 0 THEN betrag ELSE 0 END) AS einnahmen,

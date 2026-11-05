@@ -242,7 +242,7 @@ def saldo_verlauf(conn, von: date, bis: date, konto_ids=None, inkl_darlehen: boo
     (None = kein Filter). Mit Kategorie-Filter ändert sich die Semantik
     bewusst: statt des Kontostands je Konto kommt je Kategorie-Gruppe (siehe
     kategorie_gruppen) die kumulierte Summe über alle gewählten Konten
-    (Start bei 0, ohne Saldo-Korrekturen, ohne Restschuld-Linien). Bis 2.2
+    (Start bei 0, ohne Restschuld-Linien). Bis 2.2
     gab es dafür nur eine einzelne Kategorie, aufgeteilt je Konto.
 
     stand_heute liefert die Grundlage der Kennzahlen-Kacheln: Summe der
@@ -511,8 +511,12 @@ def jahresuebersicht_kategorien(conn, von: date, bis: date, konto_ids=None, kate
     Funktion 'von'/'bis' statt eines Kalenderjahres entgegen (siehe
     jahresuebersicht).
     """
-    bedingungen = ["b.typ = 'Ist'", "b.datum BETWEEN ? AND ?", "kw.system_key IS NOT 'umbuchung'"]
-    params: list = [von.isoformat(), bis.isoformat()]
+    # Seit 3.1 ohne alle gesperrten Teilbäume (Umbuchung, Korrekturbuchung,
+    # Anfangsbestand), bis 3.0 nur ohne die Wurzel „Umbuchung“.
+    gesperrt = sorted(buchungen_modul.gesperrte_kategorien(conn))
+    bedingungen = ["b.typ = 'Ist'", "b.datum BETWEEN ? AND ?",
+                   f"b.kategorie_id NOT IN ({','.join('?' * len(gesperrt)) or 'NULL'})"]
+    params: list = [von.isoformat(), bis.isoformat(), *gesperrt]
     buchungen_modul.sql_in("b.konto_id", konto_ids, bedingungen, params)
     buchungen_modul.sql_in("b.kategorie_id", kategorie_ids, bedingungen, params)
     if person_id is not None:

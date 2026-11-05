@@ -113,10 +113,6 @@ SYSTEM_KATEGORIEN = [
     ("darlehen_tilgung",      "Tilgung",                   "darlehen",  "ausgabe"),
     ("darlehen_auszahlung",   "Auszahlung",                "darlehen",  "einnahme"),
     ("umbuchung",             "Umbuchung",                 None,        None),
-    # Seit 3.1 (#12): Saldo-Korrektur als Buchung. Neutral, das Vorzeichen ist
-    # die berechnete Differenz. Gebucht nur über die Saldo-Korrektur.
-    ("korrekturbuchung",      "Korrekturbuchung",          None,        None),
-    ("anfangsbestand",        "Anfangsbestand",            None,        None),
     ("einnahmen",             "Einnahmen",                 None,        "einnahme"),
     ("einnahmen_gehalt",      "Gehalt & Lohn",             "einnahmen", "einnahme"),
     ("einnahmen_sonstige",    "Sonstige Einkünfte",        "einnahmen", "einnahme"),
@@ -135,6 +131,15 @@ SYSTEM_KATEGORIEN = [
     ("altersvorsorge_beitrag","Altersvorsorge",            "ausgaben_versicherung", "ausgabe"),
     # Seit v2.2 direkt unter Einnahmen (bis 2.1 unter "Sonstige Einkünfte").
     ("altersvorsorge_rente",  "Rente",                     "einnahmen",             "einnahme"),
+]
+
+# Seit 3.1 (#12): Saldo-Korrektur als Buchung. Neutral, das Vorzeichen ist die
+# berechnete Differenz, gebucht nur über die Saldo-Korrektur. Angelegt erst
+# nach der Kategorie-Umstellung 2.2, damit ältere Datenbanken alle übrigen
+# Kategorien mit denselben IDs bekommen wie bisher.
+KORREKTUR_SYSTEM_KATEGORIEN = [
+    ("korrekturbuchung",      "Korrekturbuchung",          None,        None),
+    ("anfangsbestand",        "Anfangsbestand",            None,        None),
 ]
 
 # Empfohlene Kategorien, die eine NEUE Datenbank zusätzlich bekommt (seit
@@ -311,14 +316,14 @@ def _migriere_altersvorsorge_einzahlung_optional(conn) -> list[str]:
 NEUTRAL_UEBERNOMMEN = {"korrekturbuchung", "anfangsbestand"}
 
 
-def _migriere_system_kategorien(conn) -> list[str]:
+def _migriere_system_kategorien(conn, liste=SYSTEM_KATEGORIEN) -> list[str]:
     """
     Ordnet den bereits vorhandenen System-Kategorien ihren system_key zu
     (Erkennung über Name + Elternknoten) und legt fehlende neu an - mit
     frei vergebener ID, nie mit einer festen.
     """
     schritte = []
-    for key, name, parent_key, typ in SYSTEM_KATEGORIEN:
+    for key, name, parent_key, typ in liste:
         if kategorie_id(conn, key) is not None:
             continue
         parent_id = kategorie_id(conn, parent_key) if parent_key else None
@@ -762,6 +767,7 @@ def initialisieren() -> dict:
         if neu:
             schritte += _migriere_empfohlene_kategorien(conn)
         schritte += _migriere_kategorien_v22(conn, neu)
+        schritte += _migriere_system_kategorien(conn, KORREKTUR_SYSTEM_KATEGORIEN)
         schritte += _migriere_alte_plan_buchungen(conn)
         schritte += _migriere_kuenftige_saldo_korrekturen(conn)
         schritte += _korrigiere_zielkonto_ohne_uebertragung_v261(conn)
