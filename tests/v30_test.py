@@ -87,7 +87,7 @@ GEGENPROBE = """
 # Seit 3.1 ohne die Felder "gesperrt" und "korrektur" und ohne die Systemkategorien der
 # Saldo-Korrektur (#12), deren Wirkung prüft v31_test.py.
 NEU31 = ("korrekturbuchung", "anfangsbestand")
-ohne = lambda x: [ohne(e) for e in x if not (isinstance(e, dict) and e.get("system_key") in NEU31)] if isinstance(x, list) else ({k: ohne(v) for k, v in x.items() if k not in ("erstellt_am", "gesperrt", "korrektur")} if isinstance(x, dict) else x)
+ohne = lambda x: [ohne(e) for e in x if not (isinstance(e, dict) and e.get("system_key") in NEU31)] if isinstance(x, list) else ({k: ohne(v) for k, v in x.items() if k not in ("erstellt_am", "gesperrt", "korrektur", "migration_saldo_korrekturen_v31_erledigt")} if isinstance(x, dict) else x)
 K = {"X-Remote-User-Id": "id-ralf", "X-Remote-User-Name": "ralf", "X-Remote-User-Groups": "system-admin"}
 for p in ["/api/konten", "/api/konten?nur_aktive=false", "/api/kategorien", "/api/personen?nur_aktive=false",
           "/api/buchungen", "/api/buchungen?inkl_anstehende=true", "/api/wiederkehrend", "/api/budgets",

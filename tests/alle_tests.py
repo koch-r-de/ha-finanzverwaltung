@@ -38,7 +38,8 @@ FACHLICH = [
     ("v262", "v262_test.py", "v21", []),
     ("v263", "v263_test.py", "v21", []),
     ("v27", "v27_test.py", "v21", []),
-    ("v30", "v30_test.py", "v21", ["VORVERSION"]),
+    ("v30", "v30_test.py", "v21", ["VORVERSION_27"]),
+    ("v31", "v31_test.py", "v21", ["VORVERSION"]),
 ]
 OBERFLAECHE = [
     ("ui", "ui_test.py", "v191", []),
@@ -54,8 +55,10 @@ OBERFLAECHE = [
 
 # Update von der Vorversion (seit 3.0 in dieser Liste): Code der Vorversion aus
 # dem Commit VORVERSION, Datenbank daten/v21. Fehlt der Commit im Klon (flacher
-# Klon), wird die Reihe übersprungen und so gemeldet.
-VORVERSION = ("2.7", "5e7b84c")
+# Klon), wird die Reihe übersprungen und so gemeldet. v31_test nutzt denselben
+# Stand für Gegenproben, v30_test weiter den Stand von 2.7 (VORVERSION_27).
+VORVERSION = ("3.0", "6d464b1")
+VORVERSION_27 = ("2.7", "5e7b84c")
 
 # Reihen, die Server und Datenbank selbst steuern (Neustarts mit
 # Verschlüsselung): alle_tests startet für sie keinen Server.
@@ -102,13 +105,13 @@ def server_starten(datenordner: Path) -> subprocess.Popen:
     raise RuntimeError("Server startet nicht.")
 
 
-def vorversion_bereitstellen() -> Path | None:
-    """Code der Vorversion per git archive nach tests/ausgabe/vorversion."""
-    ziel = AUSGABE / "vorversion"
+def vorversion_bereitstellen(stand=VORVERSION) -> Path | None:
+    """Code einer Vorversion per git archive nach tests/ausgabe/vorversion_<version>."""
+    ziel = AUSGABE / f"vorversion_{stand[0]}"
     if (ziel / "finanzverwaltung" / "run.py").exists():
         return ziel / "finanzverwaltung"
     ziel.mkdir(parents=True, exist_ok=True)
-    archiv = subprocess.run(["git", "-C", str(WURZEL), "archive", VORVERSION[1], "finanzverwaltung"],
+    archiv = subprocess.run(["git", "-C", str(WURZEL), "archive", stand[1], "finanzverwaltung"],
                             capture_output=True)
     if archiv.returncode:
         return None
@@ -122,8 +125,9 @@ def main() -> int:
     AUSGABE.mkdir()
     ergebnisse = []
     vorversion = vorversion_bereitstellen()
+    vorversion_27 = vorversion_bereitstellen(VORVERSION_27)
     for reihe, skript, quelle, extra in FACHLICH:
-        extra = [str(vorversion) if x == "VORVERSION" else x for x in extra]
+        extra = [str({"VORVERSION": vorversion, "VORVERSION_27": vorversion_27}.get(x, x)) for x in extra]
         if "None" in extra:
             ergebnisse.append((reihe, "übersprungen (Vorversion nicht im Klon) []"))
             print(f"{reihe:10} {ergebnisse[-1][1]}", flush=True)

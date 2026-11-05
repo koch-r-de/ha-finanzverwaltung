@@ -7,6 +7,7 @@ das nach Programmende verschwindet. Persistente Nutzerdaten (Datenbank,
 Backups) liegen deshalb NEBEN der .exe.
 """
 import os
+from datetime import date, timedelta
 import sqlite3
 import sys
 from pathlib import Path
@@ -659,6 +660,8 @@ def _migriere_kuenftige_saldo_korrekturen(conn) -> list[str]:
     merker = "migration_kuenftige_saldo_korrekturen_erledigt"
     if conn.execute("SELECT 1 FROM einstellungen WHERE key = ? AND value = '1'", (merker,)).fetchone():
         return []
+    if not _tabelle_da(conn, "saldo_korrekturen"):   # seit 3.1 entfernt (#12)
+        return []
     heute = zeit.heute().isoformat()
     rows = conn.execute(
         """SELECT s.id, s.datum, s.saldo, k.name AS konto FROM saldo_korrekturen s
@@ -727,6 +730,143 @@ def _migriere_feiertage_v26(conn) -> list[str]:
     return schritte
 
 
+def _tabelle_da(conn, name: str) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone() is not None
+
+
+def _faellige_plan(conn, konto_id: int, ab_iso: str, bis_iso: str, heute_iso: str) -> float:
+    """Plan-Buchungen bis heute: der Start wandelt sie gleich nach der
+    Migration in Ist-Buchungen um (plan_buchungen.umwandeln_faellige)."""
+    return conn.execute("SELECT COALESCE(SUM(betrag), 0) FROM buchungen WHERE konto_id = ? AND typ = 'Plan' "
+                        "AND datum >= ? AND datum <= ? AND datum <= ?",
+                        (konto_id, ab_iso, bis_iso, heute_iso)).fetchone()[0]
+
+
+def _saldo_30(conn, konto_id: int, bis_iso: str, heute_iso: str) -> float:
+    """Ist-Saldo nach dem Start mit der Regel bis 3.0 (Fixpunkt): jüngste
+    Korrektur bis zum Stichtag als Basis, nur Buchungen ab ihrem Datum, fällige
+    Plan-Buchungen wie Ist. Dieselbe Abfrage wie in 3.0, damit auch mehrere
+    Korrekturen am selben Tag genauso zählen (dort tatsächlich die zuerst
+    angelegte, Befund AB). Nur für die Prüfung der Umstellung."""
+    k = conn.execute("""SELECT datum, saldo FROM saldo_korrekturen WHERE konto_id = ? AND datum <= ?
+                        ORDER BY datum DESC LIMIT 1""", (konto_id, bis_iso)).fetchone()
+    ab, basis = (k["datum"], k["saldo"]) if k else ("0001-01-01", 0.0)
+    ist = conn.execute("SELECT COALESCE(SUM(betrag), 0) FROM buchungen WHERE konto_id = ? AND typ = 'Ist' "
+                       "AND datum >= ? AND datum <= ?", (konto_id, ab, bis_iso)).fetchone()[0]
+    ist += _faellige_plan(conn, konto_id, ab, bis_iso, heute_iso)
+    ab_ue = conn.execute("SELECT COALESCE(SUM(betrag), 0) FROM buchungen WHERE konto_id = ? AND typ = 'Uebertragung' "
+                         "AND datum >= ? AND datum <= ?", (konto_id, ab, bis_iso)).fetchone()[0]
+    zu_ue = conn.execute("SELECT COALESCE(SUM(betrag), 0) FROM buchungen WHERE zielkonto_id = ? AND typ = 'Uebertragung' "
+                         "AND datum >= ? AND datum <= ?", (konto_id, ab, bis_iso)).fetchone()[0]
+    return round(basis + ist - ab_ue + zu_ue, 2)
+
+
+def _migriere_saldo_korrekturen_v31(conn) -> list[str]:
+    """
+    Seit 3.1 (#12) ist die Saldo-Korrektur eine Buchung. Die alten Fixpunkte
+    (Tabelle saldo_korrekturen) werden umgewandelt: je Konto nach Datum und Id,
+    Betrag = eingegebener Wert minus neuer Saldo am Ende des Vortags
+    (einschließlich der schon umgewandelten). Mehrere am selben Tag: die mit
+    der höchsten Id gilt, die früheren werden zu Differenzen (zweite = K2 - K1).
+    Die früheste wird zum Anfangsbestand, wenn vorher keine Ist-Buchung oder
+    Übertragung des Kontos liegt und das Konto noch keinen hat. Betrag 0: keine
+    Buchung. Fällige Plan-Buchungen (bis heute) zählen dabei schon wie Ist,
+    weil der Start sie gleich danach umwandelt (Entscheidung zu #12); vor einer
+    Korrektur liegen nur solche, Korrekturen sind nie künftig. Danach wird die Tabelle gelöscht. Vorher ein Backup, jeder Schritt
+    im Start-Status, dazu der Vergleich der Salden vorher und nachher.
+    Läuft, solange die Tabelle existiert (auch nach dem Einspielen eines
+    Backups von 3.0), der Merker hält nur fest, dass es geschehen ist.
+    """
+    from . import buchungen, zeit
+    merker = "migration_saldo_korrekturen_v31_erledigt"
+    if not _tabelle_da(conn, "saldo_korrekturen"):
+        return []
+    zeilen = conn.execute("""SELECT s.id, s.konto_id, s.datum, s.saldo, s.kommentar, k.name AS konto
+                             FROM saldo_korrekturen s JOIN konten k ON k.id = s.konto_id
+                             ORDER BY s.konto_id, s.datum, s.id""").fetchall()
+    schritte = []
+    if zeilen:
+        from .backup import backup_erstellen
+        datei = backup_erstellen(conn, "manuell", beschreibung="vor Umstellung der Saldo-Korrekturen 3.1")
+        schritte.append(f"Backup vor der Umstellung der Saldo-Korrekturen: {datei}")
+    euro, de = buchungen.euro_de, (lambda iso: date.fromisoformat(iso).strftime("%d.%m.%Y"))
+    try:
+        # Salden nach der alten Regel vorher festhalten: an jedem Korrektur- und
+        # Buchungstag des Kontos und heute.
+        heute_iso = zeit.heute().isoformat()
+
+        def saldo_neu(k, tag_iso):
+            return round(buchungen.saldo(conn, k, date.fromisoformat(tag_iso))
+                         + _faellige_plan(conn, k, "0001-01-01", tag_iso, heute_iso), 2)
+
+        konten = sorted({z["konto_id"] for z in zeilen})
+        stichtage, alt = {}, {}
+        for k in konten:
+            tage = {r[0] for r in conn.execute(
+                "SELECT datum FROM buchungen WHERE konto_id = ? OR zielkonto_id = ? UNION "
+                "SELECT datum FROM saldo_korrekturen WHERE konto_id = ?", (k, k, k))}
+            stichtage[k] = sorted(tage | {heute_iso})
+            alt[k] = {d: _saldo_30(conn, k, d, heute_iso) for d in stichtage[k]}
+        id_korr = buchungen.kategorie_id_aus_schluessel(conn, "korrekturbuchung")
+        id_ab = buchungen.kategorie_id_aus_schluessel(conn, "anfangsbestand")
+        for k in konten:
+            liste = [z for z in zeilen if z["konto_id"] == k]
+            erste = liste[0]
+            anfang_moeglich = not buchungen.hat_anfangsbestand(conn, k) and not conn.execute(
+                """SELECT 1 FROM buchungen WHERE datum < ? AND ((typ IN ('Ist', 'Plan') AND konto_id = ?)
+                   OR (typ = 'Uebertragung' AND (konto_id = ? OR zielkonto_id = ?))) LIMIT 1""",
+                (erste["datum"], k, k, k)).fetchone()
+            plan_vorher = conn.execute("SELECT COUNT(*) FROM buchungen WHERE konto_id = ? AND typ = 'Plan' AND datum < ?",
+                                       (k, liste[-1]["datum"])).fetchone()[0]
+            if plan_vorher:
+                schritte.append(f"Hinweis „{erste['konto']}“: {plan_vorher} fällige Plan-Buchung(en) vor einer alten "
+                                "Saldo-Korrektur zählen bei der Umstellung schon als Ist, der Start bucht sie gleich als Ist")
+            vorheriger = None   # (datum, Wert) der vorigen Korrektur am selben Tag
+            for z in liste:
+                if vorheriger and vorheriger[0] == z["datum"]:
+                    betrag = round(z["saldo"] - vorheriger[1], 2)
+                else:
+                    vortag = (date.fromisoformat(z["datum"]) - timedelta(days=1)).isoformat()
+                    betrag = round(z["saldo"] - saldo_neu(k, vortag), 2)
+                vorheriger = (z["datum"], z["saldo"])
+                als_anfang = z is erste and anfang_moeglich
+                kurz = f"Saldo-Korrektur „{z['konto']}“ vom {de(z['datum'])} ({euro(z['saldo'])})"
+                if abs(betrag) < 0.005:
+                    schritte.append(f"{kurz}: Differenz 0, keine Buchung")
+                    continue
+                beschreibung = (f"Anfangsbestand {euro(z['saldo'])}" if als_anfang
+                                else f"Saldo-Korrektur auf {euro(z['saldo'])}")
+                if z["kommentar"] and z["kommentar"].strip():
+                    beschreibung += f" – {z['kommentar'].strip()}"
+                conn.execute("""INSERT INTO buchungen (konto_id, datum, betrag, kategorie_id, typ, beschreibung)
+                                VALUES (?, ?, ?, ?, 'Ist', ?)""",
+                             (k, z["datum"], betrag, id_ab if als_anfang else id_korr, beschreibung))
+                schritte.append(f"{kurz} → {'Anfangsbestand' if als_anfang else 'Korrekturbuchung'} {euro(betrag)}")
+        # Vergleich: Ist-Saldo nach dem Start muss gleich bleiben. Ausnahme ist
+        # nur der Fall mehrerer Korrekturen am selben Tag (höchste statt
+        # niedrigster Id, Befund AB).
+        for k in konten:
+            name = next(z["konto"] for z in zeilen if z["konto_id"] == k)
+            for d in stichtage[k]:
+                differenz = round(saldo_neu(k, d) - alt[k][d], 2)
+                if abs(differenz) >= 0.005:
+                    schritte.append(f"Abweichung „{name}“: Ist-Saldo ab dem {de(d)} um {euro(differenz)} anders als "
+                                    "bisher (mehrere Saldo-Korrekturen am selben Tag, jetzt gilt die zuletzt angelegte)")
+                    break
+        if zeilen:
+            schritte.append("Prüfung: Ist-Saldo " + ("aller Konten" if not any(x.startswith("Abweichung") for x in schritte)
+                            else "der übrigen Konten") + " an allen Buchungstagen vor und nach der Umstellung gleich")
+        conn.execute("DROP TABLE saldo_korrekturen")
+        conn.execute("INSERT OR REPLACE INTO einstellungen (key, value) VALUES (?, '1')", (merker,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    if zeilen:
+        schritte.append(f"{len(zeilen)} Saldo-Korrektur(en) in Buchungen umgewandelt, Tabelle saldo_korrekturen entfernt")
+    return schritte
+
+
 def _korrigiere_zielkonto_ohne_uebertragung_v261(conn) -> list[str]:
     """Befund P (2.6.1): Bis 2.6 speicherte „Neue Buchung“ bei Ist und Plan
     das Zielkonto aus dem verborgenen Auswahlfeld. Einmalig (Merker) wird es
@@ -770,6 +910,7 @@ def initialisieren() -> dict:
         schritte += _migriere_system_kategorien(conn, KORREKTUR_SYSTEM_KATEGORIEN)
         schritte += _migriere_alte_plan_buchungen(conn)
         schritte += _migriere_kuenftige_saldo_korrekturen(conn)
+        schritte += _migriere_saldo_korrekturen_v31(conn)
         schritte += _korrigiere_zielkonto_ohne_uebertragung_v261(conn)
         korrigiert = korrigiere_vorlagen_vorzeichen(conn)
         if korrigiert:

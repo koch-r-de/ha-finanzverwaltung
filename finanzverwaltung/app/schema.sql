@@ -28,13 +28,10 @@ CREATE TABLE IF NOT EXISTS konten (
     farbe             TEXT
 );
 
-CREATE TABLE IF NOT EXISTS saldo_korrekturen (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    konto_id    INTEGER NOT NULL REFERENCES konten(id) ON DELETE CASCADE,
-    datum       DATE NOT NULL,
-    saldo       REAL NOT NULL,
-    kommentar   TEXT
-);
+-- Bis 3.0 gab es hier die Tabelle saldo_korrekturen (Fixpunkte). Seit 3.1
+-- (#12) ist die Saldo-Korrektur eine Buchung in den Kategorien
+-- „Korrekturbuchung“ bzw. „Anfangsbestand“, die Migration
+-- db._migriere_saldo_korrekturen_v31 wandelt alte Einträge um und löscht die Tabelle.
 
 -- ─── Kategorien (Baumstruktur, beliebige Tiefe) ────────────────────────
 -- system_key: stabiler Schlüssel für von der Fachlogik referenzierte

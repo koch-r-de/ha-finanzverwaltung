@@ -32,6 +32,7 @@ def pruef(name, bed, info=""):
     print(("OK   " if bed else "FEHL ") + name + (f"  [{info}]" if info and not bed else ""))
 
 ENTFERNT_ERLAUBT = {"feiertage"}          # seit 2.6 berechnet statt gespeichert
+NEU31 = ("korrekturbuchung", "anfangsbestand")   # seit 3.1 (#12): neue Systemkategorien
 NUR_ZUWACHS = {"buchungen", "plan_buchung_protokoll", "backups_log"}   # neue Zeilen durch Generatoren/Backups
 
 
@@ -79,6 +80,9 @@ def version_von(code):
 VORVERSION = version_von(code_alt)
 VOR_26 = VORVERSION < (2, 6)
 VOR_261 = VORVERSION < (2, 6, 1)
+VOR_31 = VORVERSION < (3, 1)
+if VOR_31:
+    ENTFERNT_ERLAUBT.add("saldo_korrekturen")   # seit 3.1 Buchungen (#12)
 print("Vorversion:", ".".join(map(str, VORVERSION)), "neu:", ".".join(map(str, version_von(code_neu))))
 zeit_alt = os.environ.get("UPGRADE_ZEIT_ALT", "")
 zeit_neu = os.environ.get("UPGRADE_ZEIT_NEU", "")
@@ -97,9 +101,54 @@ ERG["befund_p"] = c.post("/api/buchungen", json={"konto_id": konten[0]["id"], "z
     "datum": "2026-10-20", "betrag": 4.5, "kategorie_id": kat, "typ": "Ist", "beschreibung": "Befund P"}).json()["id"]
 ERG["uebertragung"] = c.post("/api/buchungen", json={"konto_id": konten[0]["id"], "zielkonto_id": konten[1]["id"],
     "datum": "2026-10-20", "betrag": 10, "typ": "Uebertragung", "beschreibung": "Echte Übertragung"}).json()["id"]
+# Für 3.1 (#12): eine weitere alte Saldo-Korrektur und eine Plan-Buchung vor der
+# frühesten Korrektur eines Kontos (Sonderfall Prognose)
+tg = next(k for k in konten if k["name"] == "Tagesgeld")["id"]
+ERG["korrektur"] = c.post("/api/saldo-korrekturen", json={"konto_id": tg, "datum": "2026-10-15", "saldo": 12345.67,
+                                                          "kommentar": "laut Auszug"}).status_code
+ERG["plan_vorher"] = c.post("/api/buchungen", json={"konto_id": tg, "datum": "2025-12-01", "betrag": 77, "kategorie_id": kat,
+                                                    "typ": "Plan", "beschreibung": "Plan vor Korrektur"}).status_code
 """)
 print("Vorversion gestartet, Salden:", alt["salden"])
 vorher = schnappschuss(DB)
+
+
+HEUTE_NEU = (zeit_neu or __import__("datetime").date.today().isoformat())[:10]
+
+
+def salden_je_tag(pfad, fixpunkt: bool) -> dict:
+    """Ist-Saldo je Konto an allen Buchungs- und Korrekturtagen nach dem Start,
+    unabhängig vom Programmcode gerechnet: mit Fixpunkt wie bis 3.0, ohne wie
+    seit 3.1. Plan-Buchungen bis heute zählen wie Ist, der Start wandelt sie um."""
+    c = sqlite3.connect(pfad)
+    alte = fixpunkt and c.execute("SELECT 1 FROM sqlite_master WHERE name = 'saldo_korrekturen'").fetchone()
+    erg = {}
+    for (k,) in c.execute("SELECT id FROM konten"):
+        tage = {r[0] for r in c.execute("SELECT datum FROM buchungen WHERE konto_id = ? OR zielkonto_id = ?", (k, k))}
+        if alte:
+            tage |= {r[0] for r in c.execute("SELECT datum FROM saldo_korrekturen WHERE konto_id = ?", (k,))}
+        for t in sorted(tage):
+            basis, ab = 0.0, "0001-01-01"
+            if alte:
+                f = c.execute("SELECT datum, saldo FROM saldo_korrekturen WHERE konto_id = ? AND datum <= ? "
+                              "ORDER BY datum DESC, id LIMIT 1", (k, t)).fetchone()
+                if f:
+                    ab, basis = f
+            s = c.execute("""SELECT COALESCE(SUM(CASE WHEN konto_id = :k AND (typ = 'Ist' OR (typ = 'Plan'
+                                                     AND datum <= :heute)) THEN betrag
+                                                     WHEN typ = 'Uebertragung' AND konto_id = :k THEN -betrag
+                                                     WHEN typ = 'Uebertragung' AND zielkonto_id = :k THEN betrag
+                                                     ELSE 0 END), 0)
+                              FROM buchungen WHERE datum >= :ab AND datum <= :t""",
+                          {"k": k, "ab": ab, "t": t, "heute": HEUTE_NEU}).fetchone()[0]
+            erg[(k, t)] = round(basis + s, 2)
+    c.close()
+    return erg
+
+
+if VOR_31:
+    salden_alt = salden_je_tag(DB, fixpunkt=True)
+    korrekturen_alt = sqlite3.connect(DB).execute("SELECT COUNT(*) FROM saldo_korrekturen").fetchone()[0]
 
 # 2. Mit dem neuen Code starten
 neu = lauf(code_neu, ziel, zeit_neu, """
@@ -136,6 +185,10 @@ for t, (spalten, zeilen) in vorher.items():
             continue   # Schlüssel/Wert: unten gesondert
         n = alt_spalten.get(r[0])
         if t == "buchungen" and n is not None:
+            # Fällige Plan-Buchungen wandelt jeder Start in Ist-Buchungen um
+            it_, id_ = spalten.index("typ") + 1, spalten.index("datum") + 1
+            if r[it_] == "Plan" and n[it_] == "Ist" and r[id_] <= HEUTE_NEU:
+                n = n[:it_] + ("Plan",) + n[it_ + 1:]
             # Befund P (2.6.1): zielkonto_id bei Nicht-Übertragungen wird geleert, unten gesondert geprüft
             iz, it = spalten.index("zielkonto_id") + 1, spalten.index("typ") + 1
             if r[it] != "Uebertragung":
@@ -144,6 +197,9 @@ for t, (spalten, zeilen) in vorher.items():
             abweichend.append((t, r, alt_spalten.get(r[0])))
             break
     neue_zeilen = len(z2) - len(zeilen)
+    if t == "kategorien" and VOR_31:
+        isk, alte_ids = sp2.index("system_key") + 1, {r[0] for r in zeilen}
+        neue_zeilen -= sum(1 for r in z2 if r[isk] in NEU31 and r[0] not in alte_ids)
     if neue_zeilen and t not in NUR_ZUWACHS and t != "einstellungen":
         abweichend.append((t, f"{neue_zeilen} neue Zeilen"))
 pruef("Bestehende Zeilen aller Tabellen unverändert (neue Spalten erlaubt)", not abweichend, abweichend[:3])
@@ -167,6 +223,28 @@ if VOR_261:
     pruef("Befund P: Backup vor der Korrektur, Schritt im Start-Status",
           any("Zielkonto bei" in m for m in neu["migration"]) and any("Korrektur des Zielkontos" in m for m in neu["migration"]))
 c.close()
+
+# Seit 3.1 (#12): alte Saldo-Korrekturen sind Buchungen, Salden gleich
+if VOR_31:
+    salden_neu = salden_je_tag(DB, fixpunkt=False)
+    abw = {k: (salden_alt[k], salden_neu.get(k)) for k in salden_alt if salden_neu.get(k) != salden_alt[k]}
+    pruef("3.1: Ist-Saldo jedes Kontos an jedem Buchungs- und Korrekturtag vor und nach der Umstellung gleich",
+          alt["korrektur"] == 200 and not abw, list(abw.items())[:5])
+    c = sqlite3.connect(DB)
+    n_korr = c.execute("""SELECT COUNT(*) FROM buchungen b JOIN kategorien k ON k.id = b.kategorie_id
+                          WHERE k.system_key IN ('korrekturbuchung', 'anfangsbestand')""").fetchone()[0]
+    pruef("3.1: je alte Korrektur eine Buchung (ohne Differenz 0), Tabelle entfernt, Merker gesetzt",
+          0 < n_korr <= korrekturen_alt and not c.execute(
+              "SELECT 1 FROM sqlite_master WHERE name = 'saldo_korrekturen'").fetchone()
+          and c.execute("SELECT value FROM einstellungen WHERE key = 'migration_saldo_korrekturen_v31_erledigt'").fetchone()[0] == "1",
+          (n_korr, korrekturen_alt))
+    c.close()
+    m = " | ".join(neu["migration"])
+    pruef("3.1: Start-Status nennt Backup, jede Korrektur, die Prüfung und den Sonderfall Plan-Buchung",
+          "Backup vor der Umstellung der Saldo-Korrekturen" in m and m.count("Saldo-Korrektur „") == korrekturen_alt
+          and "Prüfung: Ist-Saldo aller Konten" in m and "fällige Plan-Buchung(en) vor einer alten Saldo-Korrektur" in m,
+          neu["migration"])
+    pruef("3.1: Backup vor der Umstellung in der Backup-Liste", any("Saldo-Korrekturen 3.1" in str(r) for r in nachher["backups_log"][1]))
 
 # Übergang: kein Termin doppelt (gleiche Quelle, gleiche Kategorie, Abstand unter 5 Tagen)
 c = sqlite3.connect(DB)
@@ -241,6 +319,49 @@ ERG["aus"] = c.post("/api/schutz/verschluesselung/ausschalten", headers=A, json=
     gleich = all(nach_schutz.get(t) == w for t, w in vor_schutz.items() if t not in ("backups_log",))
     pruef("3.0: nach Aus- und Einschalten alle Tabellen inhaltlich gleich (außer Backup-Liste)", gleich and "schritte" in b["aus"],
           [t for t, w in vor_schutz.items() if nach_schutz.get(t) != w])
+
+# 5. Seit 3.1: Umstellung auf einer mit 3.0 verschlüsselten Datenbank. Die
+# Migration läuft erst nach dem Entsperren, die Salden bleiben gleich.
+if VOR_31 and VORVERSION >= (3, 0):
+    ziel_v = ziel + "_verschluesselt"
+    shutil.rmtree(ziel_v, ignore_errors=True); shutil.copytree(quelle, ziel_v)
+    DBV = os.path.join(ziel_v, "finanzdaten.db")
+    ADMIN = """A = {"X-Remote-User-Id": "upgrade-admin", "X-Remote-User-Name": "admin", "X-Remote-User-Groups": "system-admin"}
+"""
+    lauf(code_alt, ziel_v, zeit_alt, """
+import os
+os.environ["FINANZAPP_HERKUNFT_PRUEFEN"] = "aus"
+""" + ADMIN + """
+tg = next(k for k in c.get("/api/konten").json() if k["name"] == "Tagesgeld")["id"]
+c.post("/api/saldo-korrekturen", json={"konto_id": tg, "datum": "2026-10-15", "saldo": 12345.67})
+c.get("/api/admin/datenbank-herunterladen")
+v = c.post("/api/schutz/verschluesselung/vorbereiten", headers=A, json={"passphrase": "Upgrade Passphrase 2027!", "wiederholung": "Upgrade Passphrase 2027!"}).json()
+ERG["ein"] = c.post("/api/schutz/verschluesselung/einschalten", headers=A, json={"kennung": v["kennung"], "getippt": v["wiederherstellungsschluessel"], "token": v["token"], "phrase": v["phrase"]}).json()
+""")
+    salden_v_alt = lauf(code_alt, ziel_v, zeit_alt, """
+c.post("/api/schutz/entsperren", json={"geheimnis": "Upgrade Passphrase 2027!"})
+ERG["salden"] = {k["name"]: k["saldo"] for k in c.get("/api/konten").json()}
+""")["salden"]
+    v = lauf(code_neu, ziel_v, zeit_alt, """
+ERG["zu"] = c.get("/api/konten").status_code
+ERG["vorher"] = c.get("/api/start-status").json().get("migration")
+ERG["auf"] = c.post("/api/schutz/entsperren", json={"geheimnis": "Upgrade Passphrase 2027!"}).json()
+ERG["salden"] = {k["name"]: k["saldo"] for k in c.get("/api/konten").json()}
+ERG["nachher"] = c.get("/api/start-status").json().get("migration")
+""")
+    with open(DBV, "rb") as f:
+        noch_verschluesselt = f.read(16) != b"SQLite format 3\x00"
+    pruef("3.1 verschlüsselt: zu bis zum Entsperren, danach Umstellung im Start-Status, Salden wie mit 3.0",
+          v["zu"] == 423 and noch_verschluesselt and any("Saldo-Korrektur „" in x for x in (v["nachher"] or []))
+          and any("Prüfung: Ist-Saldo aller Konten" in x for x in v["nachher"]) and v["salden"] == salden_v_alt,
+          (v["zu"], v["nachher"], v["salden"], salden_v_alt))
+    v2 = lauf(code_neu, ziel_v, zeit_alt, """
+c.post("/api/schutz/entsperren", json={"geheimnis": "Upgrade Passphrase 2027!"})
+ERG["nachher"] = c.get("/api/start-status").json().get("migration")
+ERG["salden"] = {k["name"]: k["saldo"] for k in c.get("/api/konten").json()}
+""")
+    pruef("3.1 verschlüsselt: zweiter Start ohne erneute Umstellung, Salden gleich",
+          not any("Saldo-Korrektur" in x for x in (v2["nachher"] or [])) and v2["salden"] == salden_v_alt, v2)
 
 fehl = [n for n, o in ERG if not o]
 print(f"\n{len(ERG) - len(fehl)}/{len(ERG)} bestanden", fehl)

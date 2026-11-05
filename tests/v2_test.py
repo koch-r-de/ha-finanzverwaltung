@@ -41,9 +41,12 @@ with TestClient(app) as c:
     # ── Punkt 2 ──
     mig = " ".join(st["migration"])
     pruef("P2: Migration löscht künftige Korrektur und nennt sie", "Künftig datierte Saldo-Korrektur gelöscht" in mig and "2027-03-01" in mig, st["migration"])
+    # Seit 3.1 (#12) wird die vergangene Korrektur zur Korrekturbuchung, die
+    # Tabelle saldo_korrekturen entfällt (Einzelheiten in v31_test.py).
     with sqlite3.connect(os.path.join(ziel, "finanzdaten.db")) as d2:
-        rest_k = d2.execute("SELECT datum FROM saldo_korrekturen WHERE kommentar LIKE 'Test%'").fetchall()
-    pruef("P2: vergangene Korrektur bleibt", rest_k == [("2026-10-01",)], rest_k)
+        rest_k = d2.execute("""SELECT b.datum FROM buchungen b JOIN kategorien k ON k.id = b.kategorie_id
+                               WHERE k.system_key = 'korrekturbuchung' AND b.beschreibung LIKE '%Test%'""").fetchall()
+    pruef("P2: vergangene Korrektur bleibt (als Korrekturbuchung)", rest_k == [("2026-10-01",)], rest_k)
     with TestClient(app) as c2:
         pruef("P2: zweiter Start ohne erneute Migration", not any("Saldo-Korrektur" in m for m in ok(c2.get("/api/start-status"))["migration"]))
     morgen = (HEUTE + timedelta(days=1)).isoformat()
