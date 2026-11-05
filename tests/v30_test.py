@@ -83,8 +83,11 @@ def ist_klartext(pfad):
 # ═══ A. Ohne Schutz wie 2.7 (Gegenprobe mit dem Code der Vorversion) ═══
 
 GEGENPROBE = """
-# erstellt_am setzt die Datenbank beim Anlegen (Sekunde), sonst alles vergleichen
-ohne = lambda x: [ohne(e) for e in x] if isinstance(x, list) else ({k: ohne(v) for k, v in x.items() if k != "erstellt_am"} if isinstance(x, dict) else x)
+# erstellt_am setzt die Datenbank beim Anlegen (Sekunde), sonst alles vergleichen.
+# Seit 3.1 ohne das Feld "gesperrt" und ohne die Systemkategorien der
+# Saldo-Korrektur (#12), deren Wirkung prüft v31_test.py.
+NEU31 = ("korrekturbuchung", "anfangsbestand")
+ohne = lambda x: [ohne(e) for e in x if not (isinstance(e, dict) and e.get("system_key") in NEU31)] if isinstance(x, list) else ({k: ohne(v) for k, v in x.items() if k not in ("erstellt_am", "gesperrt")} if isinstance(x, dict) else x)
 K = {"X-Remote-User-Id": "id-ralf", "X-Remote-User-Name": "ralf", "X-Remote-User-Groups": "system-admin"}
 for p in ["/api/konten", "/api/konten?nur_aktive=false", "/api/kategorien", "/api/personen?nur_aktive=false",
           "/api/buchungen", "/api/buchungen?inkl_anstehende=true", "/api/wiederkehrend", "/api/budgets",
@@ -131,6 +134,9 @@ if code_alt:
     ordner_alt, ordner_neu = ziel + "_alt27", ziel + "_neu30"
     for o in (ordner_alt, ordner_neu):
         shutil.rmtree(o, ignore_errors=True); shutil.copytree(quelle, o)
+        # Seit 3.1: ohne alte Saldo-Korrekturen, die 3.1 in Buchungen umwandelt (#12, v31_test.py)
+        _k = sqlite3.connect(os.path.join(o, "finanzdaten.db"))
+        _k.execute("DELETE FROM saldo_korrekturen"); _k.commit(); _k.close()
     e_alt, e_neu = lauf(code_alt, ordner_alt, GEGENPROBE), lauf(code, ordner_neu, GEGENPROBE)
     unterschiede = [k for k in (e_alt or {}) if (e_neu or {}).get(k) != e_alt[k]]
     pruef(f"A1 Gegenprobe: ohne Schutz liefern {len(e_alt or {})} Abfragen und Buchungen dieselben Antworten wie 2.7",

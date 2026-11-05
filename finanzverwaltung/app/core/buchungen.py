@@ -76,6 +76,50 @@ def umbuchung_kategorie_id(conn) -> int:
     return row["id"]
 
 
+# Feste Kategorien, die nur ein eigener Weg der App bucht (seit 3.1, Befund AA:
+# bis 3.0 galt die Sperre von „Umbuchung“ nur bei Vorlagen). Gesperrt ist der
+# ganze Teilbaum, in Buchungen, Vorlagen, Regeln, Budgets, Altersvorsorge-
+# Verträgen und als Siri-Favorit. Als Filter der Buchungsliste bleiben sie
+# wählbar. system_key -> Meldung.
+GESPERRTE_KATEGORIEN = {
+    "umbuchung": "Die Kategorie „Umbuchung“ ist Übertragungen zwischen eigenen Konten vorbehalten. "
+                 "Dafür gibt es den Typ „Übertragung“, bei Vorlagen die Art „Umbuchung“.",
+}
+
+
+def gesperrte_kategorien(conn) -> dict:
+    """Alle gesperrten Kategorie-IDs (samt Unterkategorien) mit Meldung."""
+    ergebnis = {}
+    for key, meldung in GESPERRTE_KATEGORIEN.items():
+        row = conn.execute("SELECT id FROM kategorien WHERE system_key = ?", (key,)).fetchone()
+        rand = [row["id"]] if row else []
+        while rand:
+            ergebnis.update({k: meldung for k in rand})
+            rand = [r["id"] for r in conn.execute(
+                f"SELECT id FROM kategorien WHERE parent_id IN ({','.join('?' * len(rand))})", rand).fetchall()]
+    return ergebnis
+
+
+def gesperrte_ids_aus_liste(kategorien) -> set:
+    """Wie gesperrte_kategorien, aber aus einer Liste von Kategorien (dicts mit
+    id, parent_id, system_key), etwa dem Auszug bei verschlossener Datenbank."""
+    ids = {k["id"] for k in kategorien if k.get("system_key") in GESPERRTE_KATEGORIEN}
+    neu = ids
+    while neu:
+        neu = {k["id"] for k in kategorien if k.get("parent_id") in neu} - ids
+        ids |= neu
+    return ids
+
+
+def kategorie_sperre_pruefen(conn, kategorie_id: Optional[int]) -> None:
+    """ValueError, wenn die Kategorie zu einem gesperrten Teilbaum gehört."""
+    if kategorie_id is None:
+        return
+    meldung = gesperrte_kategorien(conn).get(kategorie_id)
+    if meldung:
+        raise ValueError(meldung)
+
+
 def kategorie_anlegen(conn, name: str, parent_id: Optional[int] = None, typ: Optional[str] = None) -> int:
     """Ohne ausdrücklichen Typ wird er vom obersten Knoten der Elternkette
     geerbt (siehe db.typ_vom_wurzelknoten)."""
@@ -117,6 +161,8 @@ def siri_favoriten(conn):
 def siri_favorit_setzen(conn, kategorie_id: int, aktiv: bool) -> None:
     # Kein Limit mehr - beliebig viele Kategorien können als Favorit
     # markiert werden.
+    if aktiv:
+        kategorie_sperre_pruefen(conn, kategorie_id)
     conn.execute("UPDATE kategorien SET siri_favorit = ? WHERE id = ?", (int(aktiv), kategorie_id))
     conn.commit()
 
@@ -214,6 +260,7 @@ def buchung_anlegen(conn, *, konto_id: int, datum: date, betrag: float, kategori
         kategorie_id = umbuchung_kategorie_id(conn)
         betrag = abs(betrag)
     else:
+        kategorie_sperre_pruefen(conn, kategorie_id)
         # Zielkonto gibt es nur bei Übertragungen, wie in buchung_bearbeiten
         # (seit 2.6.1, Befund P: das Formular schickte das verborgene Feld mit).
         zielkonto_id = None
@@ -557,6 +604,7 @@ def buchung_bearbeiten(conn, buchung_id: int, *, konto_id: int, datum: date, bet
         kategorie_id = umbuchung_kategorie_id(conn)
         betrag = abs(betrag)
     else:
+        kategorie_sperre_pruefen(conn, kategorie_id)
         zielkonto_id = None
         betrag = vorzeichen_anwenden(conn, kategorie_id, betrag)
 
@@ -580,15 +628,17 @@ def kategorie_vorschlagen(conn, beschreibung: str) -> Optional[int]:
     if not beschreibung:
         return None
     text = beschreibung.lower()
+    gesperrt = gesperrte_kategorien(conn)   # alte Regeln auf gesperrte Kategorien (Befund AA)
     for r in conn.execute(
         "SELECT muster, kategorie_id FROM kategorie_regeln WHERE aktiv = 1 ORDER BY prioritaet, id"
     ).fetchall():
-        if r["muster"] and r["muster"].lower() in text:
+        if r["muster"] and r["muster"].lower() in text and r["kategorie_id"] not in gesperrt:
             return r["kategorie_id"]
     return None
 
 
 def regel_anlegen(conn, muster: str, kategorie_id: int, prioritaet: int = 100) -> int:
+    kategorie_sperre_pruefen(conn, kategorie_id)
     cur = conn.execute(
         "INSERT INTO kategorie_regeln (muster, kategorie_id, prioritaet) VALUES (?, ?, ?)",
         (muster, kategorie_id, prioritaet),

@@ -142,14 +142,11 @@ with TestClient(app) as c:
     pruef("Saldo-Verlauf Summe Giro+Tagesgeld (ohne Strom) neutral",
           all(round(d_tg[i] + d_gi[i], 2) in (0.0,) or HEUTE.year < 2027 for i in range(0, 3)), list(zip(d_tg, d_gi))[:3])
 
-    # Budget auf Kategorie Umbuchung: keine Prognose aus Umbuchungen
-    bu = ok(c.post("/api/budgets", json={"name": "UmbTest", "typ": "ausgabe", "kategorie_id": UMB, "betrag": 100,
-        "zeitraum": "monatlich", "startdatum": "2026-01-01"}))["id"]
-    b = ok(c.get(f"/api/budgets/{bu}"))
-    v = ok(c.get(f"/api/budgets/details/verlauf?budget_id={bu}"))
-    pruef("Budget auf Umbuchung: Verbrauch/Prognose 0", b["verbrauch"] == 0 and b["prognose"]["fix_offen"] == 0
-          and not any(x for x in v["prognose"] if x), (b["verbrauch"], b["prognose"]["fix_offen"]))
-    c.delete(f"/api/budgets/{bu}")
+    # Budget auf Kategorie Umbuchung: seit 3.1 abgelehnt (Befund AA), bis 3.0
+    # angelegt mit Verbrauch und Prognose 0
+    r = c.post("/api/budgets", json={"name": "UmbTest", "typ": "ausgabe", "kategorie_id": UMB, "betrag": 100,
+        "zeitraum": "monatlich", "startdatum": "2026-01-01"})
+    pruef("Budget auf Umbuchung abgelehnt (422)", r.status_code == 422 and "Umbuchung" in r.text, r.text)
 
     # ── Befund B: Plan-Buchung 2027-01-20 (600 KFZ) in Saldo-Verlauf/Cashflow/Kategorien/Budget ──
     monate = sv1["monate"]

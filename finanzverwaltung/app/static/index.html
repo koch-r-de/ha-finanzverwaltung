@@ -96,7 +96,7 @@
         <div id="ziel-konto-feld" style="display:none"><label>Zielkonto</label><select name="zielkonto_id" class="konto-auswahl"></select></div>
         <div><label>Datum</label><input type="date" name="datum" required data-feiertag></div>
         <div><label id="betrag-label">Betrag (€)</label><input type="number" step="0.01" name="betrag" required></div>
-        <div id="kategorie-feld"><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" required></select></div>
+        <div id="kategorie-feld"><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" data-ohne-gesperrte required></select></div>
         <div id="sparziel-feld" style="display:none"><label>Sparziel zuordnen (optional)</label><select name="sparziel_id"><option value="">– keines –</option></select></div>
         <div><label>Beschreibung</label><input name="beschreibung"></div>
         <div class="reihen-werkzeuge">
@@ -160,7 +160,7 @@
         <div id="wk-zielkonto-feld" style="display:none"><label>Zielkonto</label><select name="zielkonto_id" class="konto-auswahl"></select></div>
         <div><label>Person (optional)</label><select name="person_id" class="person-auswahl"><option value="">– keine –</option></select></div>
         <div><label id="wk-betrag-label">Betrag (€)</label><input type="number" step="0.01" name="betrag" required></div>
-        <div id="wk-kategorie-feld"><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" data-ohne-umbuchung required></select></div>
+        <div id="wk-kategorie-feld"><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" data-ohne-gesperrte required></select></div>
         <div id="wk-sparziel-feld" style="display:none"><label>Sparziel zuordnen (optional)</label><select name="sparziel_id"><option value="">– keines –</option></select></div>
         <div><label>Beschreibung</label><input name="beschreibung"></div>
         <div><label>Intervall</label>
@@ -248,7 +248,7 @@
               <option value="sparziel">Sparziel</option>
             </select>
           </div>
-          <div class="budget-kategorie-feld"><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl"></select></div>
+          <div class="budget-kategorie-feld"><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" data-ohne-gesperrte></select></div>
           <div class="budget-kategorie-feld"><label><input type="checkbox" name="inkl_unterkategorien" checked style="width:auto"> inkl. Unterkategorien</label></div>
           <div class="budget-sparziel-feld" style="display:none"><label>Trägerkonto</label><select name="konto_id" class="konto-auswahl"></select></div>
           <div class="budget-sparziel-feld" style="display:none"><label>Zielbetrag (€)</label><input type="number" step="0.01" name="zielbetrag"></div>
@@ -402,7 +402,7 @@
           </div>
           <div class="formular" id="av-einzahlung-felder">
             <div><label>Beitrag (€)</label><input type="number" step="0.01" name="beitrag_betrag"></div>
-            <div><label>Beitrags-Kategorie</label><select name="beitrag_kategorie_id" class="kategorie-auswahl"></select></div>
+            <div><label>Beitrags-Kategorie</label><select name="beitrag_kategorie_id" class="kategorie-auswahl" data-ohne-gesperrte></select></div>
             <div><label>Intervall</label>
               <select name="beitrag_intervall">
                 <option value="monatlich">Monatlich</option><option value="quartalsweise">Quartalsweise</option>
@@ -429,7 +429,7 @@
                 <option value="rente">Rente</option><option value="einmalzahlung">Einmalzahlung</option>
               </select>
             </div>
-            <div><label>Auszahlungs-Kategorie</label><select name="auszahlung_kategorie_id" class="kategorie-auswahl" required></select></div>
+            <div><label>Auszahlungs-Kategorie</label><select name="auszahlung_kategorie_id" class="kategorie-auswahl" data-ohne-gesperrte required></select></div>
 
             <div class="av-rente-feld"><label>Rente garantiert (€/Monat)</label><input type="number" step="0.01" name="rente_garantiert_betrag"></div>
             <div class="av-rente-feld"><label>Rente voraussichtlich (€/Monat)</label><input type="number" step="0.01" name="rente_voraussichtlich_betrag"></div>
@@ -764,7 +764,7 @@
           <p class="hinweis" data-hinweis="admin.regeln"></p>
           <form class="formular" id="form-regel">
             <div><label>Muster (Textbestandteil)</label><input name="muster" placeholder="z. B. REWE" required></div>
-            <div><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" required></select></div>
+            <div><label>Kategorie</label><select name="kategorie_id" class="kategorie-auswahl" data-ohne-gesperrte required></select></div>
             <div><label>Priorität</label><input type="number" name="prioritaet" value="100"></div>
             <div><button class="knopf" type="submit">Regel anlegen</button></div>
           </form>
@@ -964,6 +964,6 @@
 
 <script src="assets/vendor/chart.umd.min.js?v=5"></script>
 <script src="assets/schutz.js?v=1"></script>
-<script src="assets/app.js?v=23"></script>
+<script src="assets/app.js?v=24"></script>
 </body>
 </html>

@@ -405,11 +405,18 @@ class KategorieIn(BaseModel):
     typ: Optional[str] = None
 
 
+def _mit_sperrvermerk(kategorien: list) -> list:
+    """Seit 3.1: Feld "gesperrt" je Kategorie (buchungen.GESPERRTE_KATEGORIEN),
+    damit die Oberfläche sie in Auswahlfeldern auslässt."""
+    gesperrt = buchungen.gesperrte_ids_aus_liste(kategorien)
+    return [{**k, "gesperrt": k["id"] in gesperrt} for k in kategorien]
+
+
 @app.get("/api/kategorien")
 def api_kategorien():
     conn = verbindung()
     try:
-        return [dict(k) for k in buchungen.kategorien_baum(conn)]
+        return _mit_sperrvermerk([dict(k) for k in buchungen.kategorien_baum(conn)])
     finally:
         conn.close()
 
@@ -571,11 +578,6 @@ class WiederkehrendIn(BaseModel):
     sparziel_id: Optional[int] = None    # seit v1.10: nur bei Umbuchung
 
 
-def _umbuchung_teilbaum(conn) -> set[int]:
-    """Die Systemkategorie "Umbuchung" samt aller Unterkategorien."""
-    return set(budgets_modul.kategorie_ids(conn, buchungen.umbuchung_kategorie_id(conn), True))
-
-
 def _wiederkehrend_pruefen(conn, payload: WiederkehrendIn) -> dict:
     """Prüft eine Vorlage und liefert die zu speichernden, normalisierten
     Werte. Seit v1.10:
@@ -585,8 +587,9 @@ def _wiederkehrend_pruefen(conn, payload: WiederkehrendIn) -> dict:
       - Umbuchung (zielkonto_id gesetzt): Zielkonto muss existieren und sich
         vom Quellkonto unterscheiden; Kategorie fest "Umbuchung", Betrag ohne
         Vorzeichen, weder Inflation noch Dynamik; optionales Sparziel.
-      - Buchung: Kategorie Pflicht und nicht aus dem Teilbaum "Umbuchung"
-        (dafür gibt es den Typ Umbuchung); kein Sparziel."""
+      - Buchung: Kategorie Pflicht und nicht aus einem gesperrten Teilbaum
+        (buchungen.GESPERRTE_KATEGORIEN, für "Umbuchung" gibt es den Typ
+        Umbuchung); kein Sparziel."""
     werte = payload.model_dump()
     if payload.zielkonto_id:
         if payload.zielkonto_id == payload.konto_id:
@@ -606,9 +609,9 @@ def _wiederkehrend_pruefen(conn, payload: WiederkehrendIn) -> dict:
         raise HTTPException(422, "Dynamik ist aktiv, aber es fehlt der Prozentwert (dynamik_prozent).")
     if payload.kategorie_id is None:
         raise HTTPException(422, "Kategorie fehlt.")
-    if payload.kategorie_id in _umbuchung_teilbaum(conn):
-        raise HTTPException(422, "Die Kategorie „Umbuchung“ ist Übertragungen vorbehalten. "
-                                 "Bitte als Typ „Umbuchung“ mit Zielkonto anlegen.")
+    meldung = buchungen.gesperrte_kategorien(conn).get(payload.kategorie_id)
+    if meldung:
+        raise HTTPException(422, meldung)
     werte.update(zielkonto_id=None, sparziel_id=None,
                  betrag=wiederkehrend.vorzeichen_anwenden(conn, payload.kategorie_id, payload.betrag),
                  inflationsflag=bool(payload.inflationsflag and not payload.dynamik_aktiv))
@@ -1787,7 +1790,15 @@ def _budget_params(payload: BudgetIn):
             int(payload.inflationsflag), warnungen, payload.person_id)
 
 
+def _budget_kategorie_pruefen(conn, payload: BudgetIn) -> None:
+    """Seit 3.1 (Befund AA): kein Budget auf einer gesperrten Kategorie."""
+    meldung = buchungen.gesperrte_kategorien(conn).get(payload.kategorie_id)
+    if meldung:
+        raise HTTPException(422, meldung)
+
+
 def _budget_anlegen(conn, payload: BudgetIn) -> int:
+    _budget_kategorie_pruefen(conn, payload)
     cur = conn.execute(
         """INSERT INTO budgets
            (name, typ, kategorie_id, inkl_unterkategorien, konto_id, zielbetrag, zieldatum,
@@ -1813,6 +1824,7 @@ def _budget_aendern(conn, budget_id: int, payload: BudgetIn) -> None:
     # Seit v2.0: Trägerkonto (bzw. Typ) eines Sparziels nur änderbar, solange
     # keine Übertragung oder Vorlage zugeordnet ist - sonst passten die
     # bisherigen Zuordnungen nicht mehr zur Sparziel-Regel.
+    _budget_kategorie_pruefen(conn, payload)
     alt = conn.execute("SELECT typ, konto_id FROM budgets WHERE id = ?", (budget_id,)).fetchone()
     if alt and alt["typ"] == "sparziel" and (payload.typ != "sparziel" or payload.konto_id != alt["konto_id"]):
         n_b = conn.execute("SELECT COUNT(*) FROM buchungen WHERE sparziel_id = ?", (budget_id,)).fetchone()[0]
@@ -1965,6 +1977,8 @@ def api_regel_anlegen(payload: RegelIn):
     conn = verbindung()
     try:
         return {"id": buchungen.regel_anlegen(conn, payload.muster, payload.kategorie_id, payload.prioritaet)}
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     finally:
         conn.close()
 
@@ -2099,8 +2113,10 @@ def _siri_buchen(payload: SiriBuchungIn, conn=None, knapp: bool = False) -> dict
         if payload.kategorie:
             # Angegebene Kategorie muss eindeutig erkannt werden - kein
             # stiller Rückgriff auf die Kategorisierungsregeln (seit v1.8).
-            alle = conn.execute("""SELECT k.id, k.name, e.name AS eltern FROM kategorien k
-                                   LEFT JOIN kategorien e ON e.id = k.parent_id""").fetchall()
+            # Gesperrte Kategorien (Befund AA) gelten für Siri als unbekannt.
+            gesperrt = buchungen.gesperrte_kategorien(conn)
+            alle = [r for r in conn.execute("""SELECT k.id, k.name, e.name AS eltern FROM kategorien k
+                                   LEFT JOIN kategorien e ON e.id = k.parent_id""").fetchall() if r["id"] not in gesperrt]
             kategorie_id = _siri_eindeutig(alle, payload.kategorie, "Kategorie", knapp)["id"]
         else:
             kategorie_id = buchungen.kategorie_vorschlagen(conn, payload.beschreibung or "")
@@ -2318,8 +2334,17 @@ def api_altersvorsorge_einzeln(av_id: int):
         conn.close()
 
 
+def _av_kategorien_pruefen(conn, payload: AltersvorsorgeIn) -> None:
+    """Seit 3.1 (Befund AA): Beitrag und Auszahlung nicht auf einer gesperrten Kategorie."""
+    gesperrt = buchungen.gesperrte_kategorien(conn)
+    for kid in (payload.beitrag_kategorie_id if payload.hat_einzahlung else None, payload.auszahlung_kategorie_id):
+        if kid in gesperrt:
+            raise HTTPException(422, gesperrt[kid])
+
+
 def _av_anlegen(conn, payload: AltersvorsorgeIn) -> int:
     _av_pruefen(payload)
+    _av_kategorien_pruefen(conn, payload)
     platzhalter = ", ".join("?" * len(_AV_SPALTEN))
     cur = conn.execute(
         f"INSERT INTO altersvorsorge ({', '.join(_AV_SPALTEN)}) VALUES ({platzhalter})",
@@ -2358,6 +2383,7 @@ def api_altersvorsorge_phasen_pruefung(av_id: int, rentenbeginn: str):
 
 def _av_aendern(conn, av_id: int, payload: AltersvorsorgeIn, phasen_bereinigen: bool = False) -> None:
     _av_pruefen(payload)
+    _av_kategorien_pruefen(conn, payload)
     alt = conn.execute("SELECT * FROM altersvorsorge WHERE id = ?", (av_id,)).fetchone()
     # Seit v2.0: Buchungen, die nach einem verschobenen Rentenbeginn in der
     # falschen Phase lägen, werden nach Bestätigung (phasen_bereinigen)
@@ -2958,13 +2984,14 @@ def api_erfassen_stammdaten():
     verschlossener Datenbank aus dem Auszug."""
     if tresor.gesperrt():
         a = tresor.auszug_lesen()
-        return {"konten": [k for k in a["konten"] if k.get("aktiv", 1)], "kategorien": a["kategorien"],
+        return {"konten": [k for k in a["konten"] if k.get("aktiv", 1)], "kategorien": _mit_sperrvermerk(a["kategorien"]),
                 "sparziele": a["sparziele"], "vorgemerkt": True}
     conn = verbindung()
     try:
         return {"konten": [{"id": k["id"], "name": k["name"]} for k in buchungen.konten_liste(conn)],
-                "kategorien": [{k: r[k] for k in ("id", "name", "parent_id", "typ", "system_key", "siri_favorit")}
-                               for r in conn.execute("SELECT * FROM kategorien ORDER BY name")],
+                "kategorien": _mit_sperrvermerk(
+                    [{k: r[k] for k in ("id", "name", "parent_id", "typ", "system_key", "siri_favorit")}
+                     for r in conn.execute("SELECT * FROM kategorien ORDER BY name")]),
                 "sparziele": [dict(r) for r in conn.execute(
                     "SELECT id, name, konto_id FROM budgets WHERE typ = 'sparziel' ORDER BY name")],
                 "vorgemerkt": False}

@@ -245,10 +245,11 @@ class MehrfachAuswahl {
       return KONTEN.map((k, i) => ({ id: k.id, name: k.name, parent_id: null, tiefe: 0,
         farbe: k.farbe || KONTEN_FARBSCHEMA[i % KONTEN_FARBSCHEMA.length] }));
     }
-    // Kategorien als Baum, ohne den Teilbaum „Umbuchung“ (zählt in keiner Auswertung)
+    // Kategorien als Baum, ohne gesperrte (zählen in keiner Auswertung nach
+    // Kategorie, seit 3.1 über das Feld "gesperrt", vorher nur „Umbuchung“)
     const liste = [];
     const ast = (parentId, tiefe) => KATEGORIEN
-      .filter((k) => k.parent_id === parentId && k.system_key !== "umbuchung")
+      .filter((k) => k.parent_id === parentId && !k.gesperrt)
       .forEach((k) => { liste.push({ id: k.id, name: k.name, parent_id: k.parent_id, tiefe }); ast(k.id, tiefe + 1); });
     ast(null, 0);
     return liste;
@@ -690,16 +691,17 @@ function kategoriePfad(id) {
 
 async function ladeKategorien() {
   KATEGORIEN = await api("/kategorien");
-  // ohneUmbuchung: Teilbaum der Systemkategorie "Umbuchung" auslassen (seit
-  // v1.10 im Vorlagen-Formular, Auswahlfelder mit data-ohne-umbuchung).
-  const optionen = (parentId, praefix, ohneUmbuchung) =>
-    KATEGORIEN.filter((k) => k.parent_id === parentId && !(ohneUmbuchung && k.system_key === "umbuchung"))
+  // ohneGesperrte: gesperrte Kategorien (Feld "gesperrt" vom Server, z. B.
+  // „Umbuchung“) auslassen. Seit 3.1 in allen Formularen mit
+  // data-ohne-gesperrte (Befund AA), bis 3.0 nur bei Vorlagen.
+  const optionen = (parentId, praefix, ohneGesperrte) =>
+    KATEGORIEN.filter((k) => k.parent_id === parentId && !(ohneGesperrte && k.gesperrt))
       .flatMap((k) => [`<option value="${k.id}">${praefix}${k.name}</option>`,
-                       ...optionen(k.id, praefix + "— ", ohneUmbuchung)])
+                       ...optionen(k.id, praefix + "— ", ohneGesperrte)])
       .join("");
   document.querySelectorAll(".kategorie-auswahl").forEach((sel) => {
     const vorherigeErsteOption = sel.querySelector('option[value=""]')?.outerHTML || "";
-    sel.innerHTML = vorherigeErsteOption + optionen(null, "", sel.hasAttribute("data-ohne-umbuchung"));
+    sel.innerHTML = vorherigeErsteOption + optionen(null, "", sel.hasAttribute("data-ohne-gesperrte"));
   });
   mehrfachNeuZeichnen();
 }
@@ -3689,7 +3691,7 @@ document.getElementById("form-regel").addEventListener("submit", async (e) => {
 async function renderSiri() {
   const favoriten = await api("/siri/favoriten");
   const favIds = new Set(favoriten.map((f) => f.id));
-  const buchbar = KATEGORIEN.filter((k) => k.typ);
+  const buchbar = KATEGORIEN.filter((k) => k.typ && !k.gesperrt);
   document.getElementById("siri-favoriten-liste").innerHTML = `
     <p class="hinweis">${favoriten.length} Favorit${favoriten.length === 1 ? "" : "en"} gewählt.</p>
     <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:4px">

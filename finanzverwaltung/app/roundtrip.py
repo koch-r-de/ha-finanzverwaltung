@@ -421,12 +421,14 @@ class Regeln(Bereich):
 
     def anlegen(self, conn, ctx, w):
         _pflicht(w, "muster", "kategorie")
+        bm.kategorie_sperre_pruefen(conn, w["kategorie"])
         cur = conn.execute("INSERT INTO kategorie_regeln (muster, kategorie_id, prioritaet, aktiv) VALUES (?, ?, ?, ?)",
                            (w["muster"], w["kategorie"], w.get("prioritaet") or 100, w.get("aktiv", 1)))
         return cur.lastrowid
 
     def aendern(self, conn, ctx, id_, w, alt):
         _pflicht(w, "muster", "kategorie")
+        bm.kategorie_sperre_pruefen(conn, w["kategorie"])
         conn.execute("UPDATE kategorie_regeln SET muster = ?, kategorie_id = ?, prioritaet = ?, aktiv = ? WHERE id = ?",
                      (w["muster"], w["kategorie"], w.get("prioritaet") or 100, w.get("aktiv", 1), id_))
 

@@ -170,8 +170,10 @@ function kontextSchreiben(daten) {
 }
 
 // ─── Laden ────────────────────────────────────────────────────────
+// Gesperrte Kategorien (Feld "gesperrt" vom Server, z. B. „Umbuchung“) sind
+// seit 3.1 nicht wählbar (Befund AA).
 function kategorieOptionen(parentId, praefix) {
-  return KATEGORIEN.filter((k) => k.parent_id === parentId)
+  return KATEGORIEN.filter((k) => k.parent_id === parentId && !k.gesperrt)
     .flatMap((k) => [`<option value="${k.id}">${praefix}${k.name}</option>`,
                      ...kategorieOptionen(k.id, praefix + "— ")]).join("");
 }
@@ -195,7 +197,7 @@ async function laden() {
   document.getElementById("sb-konto").innerHTML = kontoHtml;
   document.getElementById("sb-zielkonto").innerHTML = kontoHtml;
 
-  const favoriten = KATEGORIEN.filter((k) => k.siri_favorit);
+  const favoriten = KATEGORIEN.filter((k) => k.siri_favorit && !k.gesperrt);
   // Seit 2.6.3 (Befund R): leere Option, ohne Regel-Treffer und ohne eigene
   // Wahl wird nicht gebucht (vorher stand still die erste Kategorie drin).
   document.getElementById("sb-kategorie").innerHTML = '<option value="">– bitte wählen –</option>' +
